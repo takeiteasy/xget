@@ -8,6 +8,23 @@ _pack = 1
 
 config = {}
 ident_sent = motd_end = nick_sent = nick_check = nick_valid = false
+xdcc_sent = false
+
+def bytes_to_closest(bytes)
+	fsize_arr = [ 'B', 'KB', 'MB', 'GB', 'TB' ]
+	symbol_id = 0
+
+	while symbol_id < fsize_arr.length
+		tmp = bytes / 1024
+		if tmp < 1
+			return "#{bytes.to_s}#{fsize_arr[symbol_id]}"
+		else
+			bytes = tmp
+			symbol_id += 1
+		end
+	end
+	return "#{(bytes * 1024).to_s}#{fsize_arr[symbol_id - 1]}"
+end
 
 if __FILE__ == $0
 	config_loc = File.expand_path "~/.xget.conf"
@@ -60,6 +77,23 @@ if __FILE__ == $0
 						puts "> #{msg}"
 					end
 				end
+			when "PRIVMSG"
+				if xdcc_sent and nick =~ /^#{_bot}!(.*)$/i
+					if msg =~ /^\001DCC SEND (.*) (.*) (.*) (.*)$/
+						fname =  $1
+						ip    = [$2.to_i].pack('N').unpack('C4') * '.'
+						port  =  $3.to_i
+						fsize =  $4.to_i
+
+						puts "#{_bot}: #{fname}, #{bytes_to_closest fsize} @ #{ip}:#{port}"
+					else
+						puts "! ERROR: #{msg}"
+						sock.puts 'QUIT'
+					end
+
+					sock.puts "PRIVMSG #{_bot} :XDCC cancel"
+					sock.puts 'QUIT'
+				end
 			when /^\d+?$/
 				case type.to_i
 				when 1
@@ -74,6 +108,11 @@ if __FILE__ == $0
 			end
 		else
 			sock.puts "PONG #{$~[1]}" if msg =~ /^PING :(.*)$/
+		end
+
+		if motd_end and nick_check and not xdcc_sent
+			sock.puts "PRIVMSG #{_bot} :XDCC SEND #{_pack}"
+			xdcc_sent = true
 		end
 	end
 end
