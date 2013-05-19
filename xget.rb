@@ -26,6 +26,50 @@ def bytes_to_closest(bytes)
 	return "#{(bytes * 1024).to_s}#{fsize_arr[symbol_id - 1]}"
 end
 
+def safe_fname(fname)
+	return fname if not File.exists? fname
+
+	ext  = File.extname fname
+	base = File.basename(fname, ext)
+	cur  = 2
+	while true
+		test = "#{base} (#{cur})#{ext}"
+		return test if not File.exists? test
+		cur += 1
+	end
+end
+
+def dcc_download(ip, port, fname, fsize)
+	fh    = File.open(safe_fname(fname), "w")
+	sock  = TCPSocket.new(ip, port)
+	read  = 0
+
+	fsize_clean = bytes_to_closest fsize
+
+	print "Downloading... "
+	while buf = sock.readpartial(8192)
+		read += buf.bytesize
+		print "\r\e[0KDownloading... #{bytes_to_closest read}/#{fsize_clean} @ #{bytes_to_closest buf.bytesize}"
+
+		begin
+			sock.write_nonblock [read].pack('N')
+		rescue Errno::EWOULDBLOCK
+		end
+
+		fh << buf
+		break if read == fsize
+	end
+
+	sock.close
+	fh.close
+
+	puts "! SUCCESS: #{fname} downloaded"
+	return true
+rescue EOFError
+	puts "! FAILED: #{fname} unsuccessful"
+	return false
+end
+
 if __FILE__ == $0
 	config_loc = File.expand_path "~/.xget.conf"
 	config_loc = ".xget.conf" if not File.exists? config_loc
@@ -75,17 +119,20 @@ if __FILE__ == $0
 							end
 						end
 						puts "> #{msg}"
+					elsif nick =~ /^#{_bot}!(.*)$/i
+						puts "! ERROR: #{msg}"
+						sock.puts "PRIVMSG #{_bot} :XDCC cancel"
+						sock.puts 'QUIT'
 					end
 				end
 			when "PRIVMSG"
 				if xdcc_sent and nick =~ /^#{_bot}!(.*)$/i
 					if msg =~ /^\001DCC SEND (.*) (.*) (.*) (.*)$/
-						fname =  $1
-						ip    = [$2.to_i].pack('N').unpack('C4') * '.'
-						port  =  $3.to_i
-						fsize =  $4.to_i
-
-						puts "#{_bot}: #{fname}, #{bytes_to_closest fsize} @ #{ip}:#{port}"
+						t = Thread.new(_bot, $1, [$2.to_i].pack('N').unpack('C4') * '.', $3.to_i, $4.to_i) do | bot, fname, ip, port, fsize |
+							puts "DCC: #{_bot}: #{fname}, #{bytes_to_closest fsize} @ #{ip}:#{port}"
+							res = dcc_download(ip, port, fname, fsize)
+						end
+						t.join
 					else
 						puts "! ERROR: #{msg}"
 						sock.puts 'QUIT'
