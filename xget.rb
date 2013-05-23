@@ -4,7 +4,7 @@ require 'socket'
 _serv = "irc.lolipower.org"
 _chan = nil
 _bot  = "Ginpachi-Sensei"
-_pack = 1
+_pack = 41
 
 config = {}
 ident_sent = motd_end = nick_sent = nick_check = nick_valid = false
@@ -12,18 +12,10 @@ xdcc_sent = false
 
 def bytes_to_closest(bytes)
 	fsize_arr = [ 'B', 'KB', 'MB', 'GB', 'TB' ]
-	symbol_id = 0
-
-	while symbol_id < fsize_arr.length
-		tmp = bytes / 1024
-		if tmp < 1
-			return "#{bytes.to_s}#{fsize_arr[symbol_id]}"
-		else
-			bytes = tmp
-			symbol_id += 1
-		end
-	end
-	return "#{(bytes * 1024).to_s}#{fsize_arr[symbol_id - 1]}"
+	exp       = (Math.log(bytes) / Math.log(1024)).to_i
+	exp       = fsize_arr.length if exp > fsize_arr.length
+	bytes    /= 1024 ** exp
+	return "#{bytes}#{fsize_arr[exp]}"
 end
 
 def safe_fname(fname)
@@ -39,17 +31,16 @@ def safe_fname(fname)
 	end
 end
 
-def dcc_download(ip, port, fname, fsize)
-	fh    = File.open(safe_fname(fname), "w")
+def dcc_download(ip, port, fname, fsize, read = 0)
+	fh    = File.open(fname, (read == 0 ? "w" : "a"))
 	sock  = TCPSocket.new(ip, port)
-	read  = 0
 
 	fsize_clean = bytes_to_closest fsize
 
 	print "Downloading... "
 	while buf = sock.readpartial(8192)
 		read += buf.bytesize
-		print "\r\e[0KDownloading... #{bytes_to_closest read}/#{fsize_clean} @ #{bytes_to_closest buf.bytesize}"
+		print "\r\e[0KDownloading... #{bytes_to_closest read}/#{fsize_clean} @ #{buf.bytesize}B"
 
 		begin
 			sock.write_nonblock [read].pack('N')
@@ -57,16 +48,16 @@ def dcc_download(ip, port, fname, fsize)
 		end
 
 		fh << buf
-		break if read == fsize
+		break if read >= fsize
 	end
 
 	sock.close
 	fh.close
 
-	puts "! SUCCESS: #{fname} downloaded"
+	puts " - SUCCESS: #{fname} downloaded"
 	return true
 rescue EOFError
-	puts "! FAILED: #{fname} unsuccessful"
+	puts " - FAILED: #{fname} unsuccessful"
 	return false
 end
 
@@ -84,9 +75,11 @@ if __FILE__ == $0
 	sock = TCPSocket.open(_serv, 6667)
 	until sock.eof? do
 		full_msg = sock.gets
+		puts full_msg
+
 		if full_msg[0] == ':'
 			/^:(?<nick>.*) (?<type>.*) (?<chan>.*) :(?<msg>.*)$/ =~ full_msg
-			puts "#{nick} - #{type} - #{chan} - #{msg}"
+			#puts "#{nick} - #{type} - #{chan} - #{msg}"
 
 			case type
 			when "NOTICE"
@@ -120,26 +113,40 @@ if __FILE__ == $0
 						end
 						puts "> #{msg}"
 					elsif nick =~ /^#{_bot}!(.*)$/i
-						puts "! ERROR: #{msg}"
-						sock.puts "PRIVMSG #{_bot} :XDCC cancel"
-						sock.puts 'QUIT'
+						if msg =~ /already requested that pack/i
+							puts "! ERROR: #{msg}"
+							sock.puts "PRIVMSG #{_bot} :XDCC cancel"
+							sock.puts 'QUIT'
+						else
+							puts "! #{nick}: #{msg}"
+						end
 					end
 				end
 			when "PRIVMSG"
+				puts full_msg
 				if xdcc_sent and nick =~ /^#{_bot}!(.*)$/i
 					if msg =~ /^\001DCC SEND (.*) (.*) (.*) (.*)$/
-						t = Thread.new(_bot, $1, [$2.to_i].pack('N').unpack('C4') * '.', $3.to_i, $4.to_i) do | bot, fname, ip, port, fsize |
-							puts "DCC: #{_bot}: #{fname}, #{bytes_to_closest fsize} @ #{ip}:#{port}"
-							res = dcc_download(ip, port, fname, fsize)
+						org_fname = fname = $1
+						ip        = [$2.to_i].pack('N').unpack('C4') * '.'
+						port      =  $3.to_i
+						fsize     =  $4.to_i
+						fname     =  $1 if fname =~ /"(.*)"/
+						read_from =  0
+						if File.exists? fname and File.stat(fname).size < fsize
+							read_from = File.stat(fname).size
+							sock.puts "PRIVMSG #{_bot} :\001DCC RESUME #{org_fname} #{port} #{read_from}\001"
+						elsif File.exists? fname
+							fname = safe_fname fname
 						end
-						t.join
+
+						t = Thread.new do
+							puts "Connecting to: #{_bot} @ #{ip}:#{port}"
+							dcc_download(ip, port, fname, fsize, read_from)
+						end
 					else
 						puts "! ERROR: #{msg}"
 						sock.puts 'QUIT'
 					end
-
-					sock.puts "PRIVMSG #{_bot} :XDCC cancel"
-					sock.puts 'QUIT'
 				end
 			when /^\d+?$/
 				case type.to_i
@@ -157,10 +164,10 @@ if __FILE__ == $0
 			sock.puts "PONG #{$~[1]}" if msg =~ /^PING :(.*)$/
 		end
 
-		if motd_end and nick_check and not xdcc_sent
-			sock.puts "PRIVMSG #{_bot} :XDCC SEND #{_pack}"
-			xdcc_sent = true
-		end
+		#if motd_end and nick_check and not xdcc_sent
+			#sock.puts "PRIVMSG #{_bot} :XDCC SEND #{_pack}"
+			#xdcc_sent = true
+		#end
 	end
 end
 
