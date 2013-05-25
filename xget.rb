@@ -4,7 +4,7 @@
 _serv = "irc.lolipower.org"
 _chan = nil
 _bot  = "Ginpachi-Sensei"
-_pack = 41
+_pack = 1
 
 config = {}
 
@@ -68,7 +68,9 @@ def dcc_download ip, port, fname, fsize, read = 0
 	sock.close
 	fh.close
 
-	#$xdcc_sent = false
+	$xdcc_sent = false
+	$xdcc_accept = $xdcc_no_accept = false
+	$xdcc_accept_time = $xdcc_ret = nil
 
 	puts " - SUCCESS: #{fname} downloaded"
 	return true
@@ -93,6 +95,7 @@ if __FILE__ == $0
 	t = Thread.new do
 		while true do
 			if motd_end and nick_check and not $xdcc_sent
+				sleep 1 # Cool off before download
 				sock.puts "PRIVMSG #{_bot} :XDCC SEND #{_pack}"
 				$xdcc_sent = true
 			end
@@ -158,6 +161,9 @@ if __FILE__ == $0
 							puts "! ERROR: #{msg}"
 							sock.puts "PRIVMSG #{_bot} :XDCC cancel"
 							sock.puts 'QUIT'
+						elsif msg =~ /you have a dcc pending/i
+							puts "! ERROR: #{msg} - cancelling pending"
+							sock.puts "PRIVMSG #{_bot} :xdcc cancel"
 						else
 							puts "! #{nick}: #{msg}"
 						end
