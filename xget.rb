@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 require 'socket'
+require 'thread'
 
 _serv = "irc.lolipower.org"
 _chan = nil
@@ -139,7 +140,7 @@ if __FILE__ == $0
 							fname = safe_fname fname
 						end
 
-						t = Thread.new do
+						Thread.new do
 							puts "Connecting to: #{_bot} @ #{ip}:#{port}"
 							dcc_download(ip, port, fname, fsize, read_from)
 						end
@@ -161,7 +162,7 @@ if __FILE__ == $0
 				end
 			end
 		else
-			sock.puts "PONG #{$~[1]}" if msg =~ /^PING :(.*)$/
+			sock.puts "PONG :#{$1}" if full_msg =~ /^PING :(.*)$/
 		end
 
 		#if motd_end and nick_check and not xdcc_sent
