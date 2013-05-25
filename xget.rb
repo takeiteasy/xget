@@ -1,6 +1,5 @@
 #!/usr/bin/env ruby
-require 'socket'
-require 'thread'
+%w(socket thread).each { |r| require r }
 
 _serv = "irc.lolipower.org"
 _chan = nil
@@ -8,10 +7,24 @@ _bot  = "Ginpachi-Sensei"
 _pack = 41
 
 config = {}
-ident_sent = motd_end = nick_sent = nick_check = nick_valid = false
-xdcc_sent = false
 
-def bytes_to_closest(bytes)
+ident_sent = motd_end = nick_sent = nick_check = nick_valid = false
+
+$xdcc_sent = $xdcc_accept = $xdcc_no_accept = false
+$xdcc_accept_time = $xdcc_ret = nil
+
+class XDCC
+	attr_accessor :fname, :fsize, :ip, :port
+
+	def initialize fname, fsize, ip, port
+		@fname = fname
+		@fsize = fsize
+		@ip    = ip
+		@port  = port
+	end
+end
+
+def bytes_to_closest bytes
 	fsize_arr = [ 'B', 'KB', 'MB', 'GB', 'TB' ]
 	exp       = (Math.log(bytes) / Math.log(1024)).to_i
 	exp       = fsize_arr.length if exp > fsize_arr.length
@@ -19,7 +32,7 @@ def bytes_to_closest(bytes)
 	return "#{bytes}#{fsize_arr[exp]}"
 end
 
-def safe_fname(fname)
+def safe_fname fname
 	return fname if not File.exists? fname
 
 	ext  = File.extname fname
@@ -32,9 +45,9 @@ def safe_fname(fname)
 	end
 end
 
-def dcc_download(ip, port, fname, fsize, read = 0)
-	fh    = File.open(fname, (read == 0 ? "w" : "a"))
-	sock  = TCPSocket.new(ip, port)
+def dcc_download ip, port, fname, fsize, read = 0
+	fh    = File.open fname, (read == 0 ? "w" : "a")
+	sock  = TCPSocket.new ip, port
 
 	fsize_clean = bytes_to_closest fsize
 
@@ -55,6 +68,8 @@ def dcc_download(ip, port, fname, fsize, read = 0)
 	sock.close
 	fh.close
 
+	#$xdcc_sent = false
+
 	puts " - SUCCESS: #{fname} downloaded"
 	return true
 rescue EOFError
@@ -74,6 +89,31 @@ if __FILE__ == $0
 	config["realname"] = config["nick"] if config["realname"]        == nil
 
 	sock = TCPSocket.open(_serv, 6667)
+
+	t = Thread.new do
+		while true do
+			if motd_end and nick_check and not $xdcc_sent
+				sock.puts "PRIVMSG #{_bot} :XDCC SEND #{_pack}"
+				$xdcc_sent = true
+			end
+
+			# Wait 3 seconds for a DCC ACCEPT response, if there isn't one, don't resume
+			if $xdcc_sent and $xdcc_accept and $xdcc_accept_time != nil
+				if (Time.now - $xdcc_accept_time).floor > 3
+					$xdcc_no_accept = true
+					puts "FAILED! Bot client doesn't support resume!"
+				end
+			end
+
+			if $xdcc_sent and $xdcc_no_accept
+				puts "Connecting to: #{_bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
+				dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
+				$xdcc_accept = $xdcc_no_accept = false
+				$xdcc_accept_time = $xdcc_ret = nil
+			end
+		end
+	end
+
 	until sock.eof? do
 		full_msg = sock.gets
 		puts full_msg
@@ -125,24 +165,36 @@ if __FILE__ == $0
 				end
 			when "PRIVMSG"
 				puts full_msg
-				if xdcc_sent and nick =~ /^#{_bot}!(.*)$/i
+				if $xdcc_sent and nick =~ /^#{_bot}!(.*)$/i
 					if msg =~ /^\001DCC SEND (.*) (.*) (.*) (.*)$/
-						org_fname = fname = $1
+						tmp_fname = fname = $1
 						ip        = [$2.to_i].pack('N').unpack('C4') * '.'
 						port      =  $3.to_i
 						fsize     =  $4.to_i
-						fname     =  $1 if fname =~ /"(.*)"/
-						read_from =  0
-						if File.exists? fname and File.stat(fname).size < fsize
-							read_from = File.stat(fname).size
-							sock.puts "PRIVMSG #{_bot} :\001DCC RESUME #{org_fname} #{port} #{read_from}\001"
-						elsif File.exists? fname
-							fname = safe_fname fname
+						fname     =  $1 if fname =~ /^"(.*)"$/
+						$xdcc_ret = XDCC.new fname, fsize, ip, port
+
+						if File.exists? $xdcc_ret.fname and File.stat($xdcc_ret.fname).size < $xdcc_ret.fsize
+							sock.puts "PRIVMSG #{_bot} :\001DCC RESUME #{tmp_fname} #{$xdcc_ret.port} #{File.stat($xdcc_ret.fname).size}\001"
+							$xdcc_accept = true
+							$xdcc_accept_time = Time.now
+							print "! Incomplete file detected. Attempting to resume..."
+							next # Skip and wait for "DCC ACCEPT"
+						elsif File.exists? $xdcc_ret.fname
+							$xdcc_ret.fname = safe_fname $xdcc_ret.fname
 						end
 
 						Thread.new do
-							puts "Connecting to: #{_bot} @ #{ip}:#{port}"
-							dcc_download(ip, port, fname, fsize, read_from)
+							puts "Connecting to: #{_bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
+							dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
+						end
+					elsif $xdcc_accept and $xdcc_ret != nil and not $xdcc_no_accept and msg =~ /^\001DCC ACCEPT (.*) (.*) (.*)$/
+						$xdcc_accept_time = 0
+						puts "SUCCESS!"
+
+						Thread.new do
+							puts "Connecting to: #{_bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
+							dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize, File.stat($xdcc_ret.fname).size
 						end
 					else
 						puts "! ERROR: #{msg}"
@@ -150,13 +202,14 @@ if __FILE__ == $0
 					end
 				end
 			when /^\d+?$/
-				case type.to_i
+				type_i = type.to_i
+				case type_i
 				when 1
 					puts "! #{msg}"
 				when 376
 					motd_end = true
 				when 400..533
-					next if not ident_sent # Skip 439
+					next if not ident_sent or type_i == 439 # Skip 439
 					puts "! ERROR: #{msg}"
 					sock.puts 'QUIT'
 				end
@@ -164,11 +217,7 @@ if __FILE__ == $0
 		else
 			sock.puts "PONG :#{$1}" if full_msg =~ /^PING :(.*)$/
 		end
-
-		#if motd_end and nick_check and not xdcc_sent
-			#sock.puts "PRIVMSG #{_bot} :XDCC SEND #{_pack}"
-			#xdcc_sent = true
-		#end
 	end
+	Thread.kill(t)
 end
 
