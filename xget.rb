@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-%w(socket thread).each { |r| require r }
+%w(socket thread slop).each { |r| require r }
 
 _serv = "irc.lolipower.org"
 _chan = nil
@@ -46,8 +46,8 @@ def safe_fname fname
 end
 
 def dcc_download ip, port, fname, fsize, read = 0
-	fh    = File.open fname, (read == 0 ? "w" : "a")
-	sock  = TCPSocket.new ip, port
+	fh   = File.open fname, (read == 0 ? "w" : "a")
+	sock = TCPSocket.new ip, port
 
 	fsize_clean = bytes_to_closest fsize
 
@@ -80,15 +80,58 @@ rescue EOFError
 end
 
 if __FILE__ == $0
-	config_loc = File.expand_path "~/.xget.conf"
-	config_loc = ".xget.conf" if not File.exists? config_loc
+	opts = Slop.parse do
+		banner 'Usage: xget.rb [options]'
+		on 'h', 'help', 'Print help'
+		on 'v', 'version', 'Print version'
 
-	check_line    = ->(x) { x.length > 1 and x[0] != '#' }
-	proccess_line = ->(x) { config[$1] = $2 if not config.has_key? $1 if x =~ /^(\w+)=(.*)$/ }
-	File.open(config_loc, "r").each_line.select(&check_line).each(&proccess_line) if File.exists? config_loc
-	abort("! ERROR: No nick specified in config!") if config["nick"] == nil
-	config["user"]     = config["nick"] if config["user"]            == nil
-	config["realname"] = config["nick"] if config["realname"]        == nil
+		on 'config=', 'Config file location', argument: :optional
+	end
+
+	if opts.version?
+		puts "xget: version 0.0.0"
+		exit
+	end
+
+	if opts.help?
+		puts opts
+		exit
+	end
+
+	config_loc = opts["config"]
+	if config_loc == nil or not File.exists? config_loc
+		config_loc = File.expand_path "~/.xget.conf"
+		config_loc = ".xget.conf" if not File.exists? config_loc
+	end
+
+	cur_block = "*"
+	config[cur_block] = {}
+	config_copies = {}
+
+	File.open(config_loc, "r").each_line do |line|
+		next if line.length <= 1 or line[0] == '#'
+
+		if line =~ /^\[(.*)\]$/
+			cur_block = $1
+			if cur_block.include? ','
+				tmp_split = cur_block.split(",")
+				next unless tmp_split[0] =~ /^(\w+?).(\w+?).(\w+?)$/
+				config_copies[tmp_split[0]] = []
+				tmp_split.each do |x|
+					next if x == tmp_split[0] or not x =~ /^(\w+?).(\w+?).(\w+?)$/
+					config_copies[tmp_split[0]].push(x) unless config_copies[tmp_split[0]].include? x
+				end
+				cur_block = tmp_split[0]
+			end
+			config[cur_block] = {} unless config.has_key? cur_block
+		elsif line =~ /^(\w+?)=(.*)$/
+			config[cur_block][$1] = $2 unless config[cur_block].has_key? $1
+		end
+	end
+	config_copies.each { |k,v| v.each { |x| config[x] = config[k] } } unless config_copies.empty?
+
+	puts config
+	exit
 
 	sock = TCPSocket.open(_serv, 6667)
 
@@ -119,7 +162,7 @@ if __FILE__ == $0
 
 	until sock.eof? do
 		full_msg = sock.gets
-		puts full_msg
+		#puts full_msg
 
 		if full_msg[0] == ':'
 			/^:(?<nick>.*) (?<type>.*) (?<chan>.*) :(?<msg>.*)$/ =~ full_msg
@@ -131,9 +174,9 @@ if __FILE__ == $0
 					if chan == "AUTH"
 						if msg =~ /Checking Ident/i
 							puts "! Sending ident..."
-							sock.puts "PASS #{config["pass"]}"
-							sock.puts "NICK #{config["nick"]}"
-							sock.puts "USER #{config["user"]} 0 * #{config["realname"]}"
+							sock.puts "PASS #{config["*"]["pass"]}"
+							sock.puts "NICK #{config["*"]["nick"]}"
+							sock.puts "USER #{config["*"]["user"]} 0 * #{config["*"]["realname"]}"
 							ident_sent = true
 						elsif msg =~ /No Ident response/i or msg =~ /Erroneous Nickname/i
 							puts "! ERROR: Ident failed"
@@ -143,8 +186,8 @@ if __FILE__ == $0
 					end
 				else
 					if nick =~ /^NickServ!(.*)$/
-						if not nick_sent and config["nickserv"] != nil
-							sock.puts "PRIVMSG NickServ :IDENTIFY #{config["nickserv"]}"
+						if not nick_sent and config["*"]["nickserv"] != nil
+							sock.puts "PRIVMSG NickServ :IDENTIFY #{config["*"]["nickserv"]}"
 							nick_sent = true
 						elsif nick_sent and not nick_check
 							if msg =~ /Password incorrect/i
