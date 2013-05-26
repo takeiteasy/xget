@@ -21,6 +21,10 @@ class XDCC_SEND
 		@ip    = ip
 		@port  = port
 	end
+
+	def put
+		puts "[ #{self.fname}, #{self.fsize}, #{self.ip}, #{self.port}"
+	end
 end
 
 class XDCC_REQ
@@ -32,6 +36,14 @@ class XDCC_REQ
 		@bot  = bot
 		@pack = pack
 		@info = info
+	end
+
+	def eql? other
+		self.serv == other.serv and self.chan == other.chan and self.bot == other.bot and self.pack == other.pack
+	end
+
+	def put
+		puts "[ #{self.serv}, #{self.chan}, #{self.bot}, #{self.pack}, #{self.info} ]"
 	end
 end
 
@@ -127,8 +139,9 @@ if __FILE__ == $0
 
 	cur_block = "*"
 	config[cur_block] = {}
-	config_copies = {}
+	%w(user nick pass realname nickserv).each { |x| config[cur_block][x] = opts[x] unless opts[x] == nil }
 
+	config_copies = {}
 	File.open(config_loc, "r").each_line do |line|
 		next if line.length <= 1 or line[0] == '#'
 
@@ -154,19 +167,20 @@ if __FILE__ == $0
 	to_check = ARGV
 	unless opts['files'] == nil or opts['files'].empty?
 		opts['files'].each do |x|
-			File.open(x, "r").each_line { |x| to_check << x.chomp } if File.exists? x
+			File.open(x, "r").each_line { |y| to_check << y.chomp } if File.exists? x
 		end
 	end
 
-	tmp_range = []
+	tmp_range = requests = []
 	to_check.each do |x|
 		if x =~ /^(\w+?).(\w+?).(\w+?)\/#(\w+?)\/(\w+?)\/(.*)$/
 			serv = [$1, $2, $3].join(".")
+			info = (config.has_key?(serv) ? serv : "*")
 			chan = "##{$4}"
 			bot  = $5
 			pack = case $6
 				when /^(\d+?)$/
-					$1
+					$1.to_i
 				when /^(\d+?)..(\d+?)$/
 					if $1 > $2 or $1 == $2
 						puts "! ERROR: Invalid range #{$1} to #{$2} in \"#{x}\""
@@ -174,20 +188,33 @@ if __FILE__ == $0
 					end
 
 					tmp_range =* ($1.to_i + 1)..$2.to_i
-					$1
+					$1.to_i
 				else
 					puts "! ERROR: Invalid pack ID in \"#{x}\""
 					next
 				end
-			puts "#{x} => #{serv} #{chan} #{bot} #{pack}"
+			requests.push XDCC_REQ.new serv, chan, bot, pack, info
+
 			if not tmp_range.empty?
-				tmp_range.each { |y| puts "#{x} => #{serv} #{chan} #{bot} #{y}" }
+				tmp_range.each { |y| requests.push XDCC_REQ.new serv, chan, bot, y, info }
 				tmp_range.clear
 			end
 		else
 			abort "! ERROR: #{x} is not a valid XDCC address\n         XDCC Address format: irc.serv.com/#chan/bot/pack"
 		end
 	end
+
+	i = j = 0
+	to_pop = []
+	requests.each do |x|
+		requests.each do |y|
+			to_pop << j if x.eql? y if i != j
+			j += 1
+		end
+		i += 1
+	end
+	to_pop.each { |x| requests.delete_at(x) }
+	requests.each { |x| x.put }
 
 	exit
 
@@ -212,8 +239,6 @@ if __FILE__ == $0
 			if $xdcc_sent and $xdcc_no_accept
 				puts "Connecting to: #{_bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
 				dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
-				$xdcc_accept = $xdcc_no_accept = false
-				$xdcc_accept_time = $xdcc_ret = nil
 			end
 		end
 	end
