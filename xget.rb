@@ -7,13 +7,12 @@ _bot  = "Ginpachi-Sensei"
 _pack = 1
 
 config = {}
-
 ident_sent = motd_end = nick_sent = nick_check = nick_valid = false
 
 $xdcc_sent = $xdcc_accept = $xdcc_no_accept = false
 $xdcc_accept_time = $xdcc_ret = nil
 
-class XDCC
+class XDCC_SEND
 	attr_accessor :fname, :fsize, :ip, :port
 
 	def initialize fname, fsize, ip, port
@@ -21,6 +20,18 @@ class XDCC
 		@fsize = fsize
 		@ip    = ip
 		@port  = port
+	end
+end
+
+class XDCC_REQ
+	attr_accessor :serv, :chan, :bot, :pack, :info
+
+	def initialize serv, chan, bot, pack, info = "*"
+		@serv = serv
+		@chan = chan
+		@bot  = bot
+		@pack = pack
+		@info = info
 	end
 end
 
@@ -80,21 +91,31 @@ rescue EOFError
 end
 
 if __FILE__ == $0
-	opts = Slop.parse do
-		banner 'Usage: xget.rb [options]'
-		on 'h', 'help', 'Print help'
-		on 'v', 'version', 'Print version'
+	opts = Slop.parse! do
+		banner ' Usage: xget.rb [options] [value] [links] [--files] [file1:file2:file3]'
+		on :help, :ignore_case => true
 
-		on 'config=', 'Config file location', argument: :optional
-	end
+		on 'v', 'version', 'Print version' do
+			puts "xget: version 0.0.0"
+			exit
+		end
 
-	if opts.version?
-		puts "xget: version 0.0.0"
-		exit
+		on 'config=',   'Config file location'
+		on 'user=',     'IRC \'USER\' for Ident'
+		on 'nick=',     'IRC nick'
+		on 'pass=',     'IRC \'PASS\' for Ident'
+		on 'realname=', 'Realname for \'USER\' Ident'
+		on 'nickserv=', 'Password for Nickserv'
+		on 'files=',    'Pass list of files to parse for links', as: Array, delimiter: ':'
 	end
 
 	if opts.help?
 		puts opts
+		puts "\n Examples"
+		puts " \txget.rb --config config.conf --nick test"
+		puts " \txget.rb --files test1.txt:test2.txt:test3.txt"
+		puts " \txget.rb irc.rizon.net/#news/ginpachi-sensei/1"
+		puts " \txget.rb irc.rizon.net/#news/ginpachi-sensei/41..46"
 		exit
 	end
 
@@ -130,7 +151,44 @@ if __FILE__ == $0
 	end
 	config_copies.each { |k,v| v.each { |x| config[x] = config[k] } } unless config_copies.empty?
 
-	puts config
+	to_check = ARGV
+	unless opts['files'] == nil or opts['files'].empty?
+		opts['files'].each do |x|
+			File.open(x, "r").each_line { |x| to_check << x.chomp } if File.exists? x
+		end
+	end
+
+	tmp_range = []
+	to_check.each do |x|
+		if x =~ /^(\w+?).(\w+?).(\w+?)\/#(\w+?)\/(\w+?)\/(.*)$/
+			serv = [$1, $2, $3].join(".")
+			chan = "##{$4}"
+			bot  = $5
+			pack = case $6
+				when /^(\d+?)$/
+					$1
+				when /^(\d+?)..(\d+?)$/
+					if $1 > $2 or $1 == $2
+						puts "! ERROR: Invalid range #{$1} to #{$2} in \"#{x}\""
+						next
+					end
+
+					tmp_range =* ($1.to_i + 1)..$2.to_i
+					$1
+				else
+					puts "! ERROR: Invalid pack ID in \"#{x}\""
+					next
+				end
+			puts "#{x} => #{serv} #{chan} #{bot} #{pack}"
+			if not tmp_range.empty?
+				tmp_range.each { |y| puts "#{x} => #{serv} #{chan} #{bot} #{y}" }
+				tmp_range.clear
+			end
+		else
+			abort "! ERROR: #{x} is not a valid XDCC address\n         XDCC Address format: irc.serv.com/#chan/bot/pack"
+		end
+	end
+
 	exit
 
 	sock = TCPSocket.open(_serv, 6667)
@@ -221,7 +279,7 @@ if __FILE__ == $0
 						port      =  $3.to_i
 						fsize     =  $4.to_i
 						fname     =  $1 if fname =~ /^"(.*)"$/
-						$xdcc_ret = XDCC.new fname, fsize, ip, port
+						$xdcc_ret = XDCC_SEND.new fname, fsize, ip, port
 
 						if File.exists? $xdcc_ret.fname and File.stat($xdcc_ret.fname).size < $xdcc_ret.fsize
 							sock.puts "PRIVMSG #{_bot} :\001DCC RESUME #{tmp_fname} #{$xdcc_ret.port} #{File.stat($xdcc_ret.fname).size}\001"
