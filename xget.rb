@@ -1,11 +1,6 @@
 #!/usr/bin/env ruby
 %w(socket thread slop).each { |r| require r }
 
-_serv = "irc.lolipower.org"
-_chan = nil
-_bot  = "Ginpachi-Sensei"
-_pack = 1
-
 config = {}
 ident_sent = motd_end = nick_sent = nick_check = nick_valid = false
 
@@ -22,8 +17,8 @@ class XDCC_SEND
 		@port  = port
 	end
 
-	def put
-		puts "[ #{self.fname}, #{self.fsize}, #{self.ip}, #{self.port}"
+	def to_s
+		"[ #{self.fname}, #{self.fsize}, #{self.ip}, #{self.port}"
 	end
 end
 
@@ -42,8 +37,8 @@ class XDCC_REQ
 		self.serv == other.serv and self.chan == other.chan and self.bot == other.bot and self.pack == other.pack
 	end
 
-	def put
-		puts "[ #{self.serv}, #{self.chan}, #{self.bot}, #{self.pack}, #{self.info} ]"
+	def to_s
+		"[ #{self.serv}, #{self.chan}, #{self.bot}, #{self.pack}, #{self.info} ]"
 	end
 end
 
@@ -94,6 +89,7 @@ def dcc_download ip, port, fname, fsize, read = 0
 	$xdcc_sent = false
 	$xdcc_accept = $xdcc_no_accept = false
 	$xdcc_accept_time = $xdcc_ret = nil
+	exit
 
 	puts " - SUCCESS: #{fname} downloaded"
 	return true
@@ -131,39 +127,48 @@ if __FILE__ == $0
 		exit
 	end
 
+	# Get the config location
 	config_loc = opts["config"]
 	if config_loc == nil or not File.exists? config_loc
 		config_loc = File.expand_path "~/.xget.conf"
 		config_loc = ".xget.conf" if not File.exists? config_loc
 	end
 
+	# Insert config settings from arguments into config hash
 	cur_block = "*"
 	config[cur_block] = {}
 	%w(user nick pass realname nickserv).each { |x| config[cur_block][x] = opts[x] unless opts[x] == nil }
 
+	# Parse config
 	config_copies = {}
 	File.open(config_loc, "r").each_line do |line|
 		next if line.length <= 1 or line[0] == '#'
 
-		if line =~ /^\[(.*)\]$/
+		if line =~ /^\[(.*)\]$/ # Check if header
 			cur_block = $1
-			if cur_block.include? ','
+			if cur_block.include? ',' # Check if header contains more than one server
 				tmp_split = cur_block.split(",")
 				next unless tmp_split[0] =~ /^(\w+?).(\w+?).(\w+?)$/
 				config_copies[tmp_split[0]] = []
-				tmp_split.each do |x|
+				tmp_split.each do |x| # Add all copies to copies hash
 					next if x == tmp_split[0] or not x =~ /^(\w+?).(\w+?).(\w+?)$/
-					config_copies[tmp_split[0]].push(x) unless config_copies[tmp_split[0]].include? x
+					config_copies[tmp_split[0]].push x unless config_copies[tmp_split[0]].include? x
 				end
 				cur_block = tmp_split[0]
 			end
+
+			# Set current block to the new header
 			config[cur_block] = {} unless config.has_key? cur_block
 		elsif line =~ /^(\w+?)=(.*)$/
+			# Add value to current header, default is *
 			config[cur_block][$1] = $2 unless config[cur_block].has_key? $1
 		end
 	end
+
+	# Go through each and make copies of the original
 	config_copies.each { |k,v| v.each { |x| config[x] = config[k] } } unless config_copies.empty?
 
+	# Take remaining arguments and all lines from --files arg and put into array
 	to_check = ARGV
 	unless opts['files'] == nil or opts['files'].empty?
 		opts['files'].each do |x|
@@ -171,9 +176,10 @@ if __FILE__ == $0
 		end
 	end
 
-	tmp_range = requests = []
+	# Parse to_check array for valid XDCC links, irc.serv.org/#chan/bot/pack
+	requests, tmp_range = [], []
 	to_check.each do |x|
-		if x =~ /^(\w+?).(\w+?).(\w+?)\/#(\w+?)\/(\w+?)\/(.*)$/
+		if x =~ /^(\w+?).(\w+?).(\w+?)\/#(\w+?)\/(.*)\/(.*)$/
 			serv = [$1, $2, $3].join(".")
 			info = (config.has_key?(serv) ? serv : "*")
 			chan = "##{$4}"
@@ -181,12 +187,13 @@ if __FILE__ == $0
 			pack = case $6
 				when /^(\d+?)$/
 					$1.to_i
-				when /^(\d+?)..(\d+?)$/
+				when /^(\d+?)..(\d+?)$/ # Pack range from x to y
 					if $1 > $2 or $1 == $2
 						puts "! ERROR: Invalid range #{$1} to #{$2} in \"#{x}\""
 						next
 					end
 
+					# Convert range to array for later
 					tmp_range =* ($1.to_i + 1)..$2.to_i
 					$1.to_i
 				else
@@ -195,7 +202,8 @@ if __FILE__ == $0
 				end
 			requests.push XDCC_REQ.new serv, chan, bot, pack, info
 
-			if not tmp_range.empty?
+			# Convert range array to new requests
+			unless tmp_range.empty?
 				tmp_range.each { |y| requests.push XDCC_REQ.new serv, chan, bot, y, info }
 				tmp_range.clear
 			end
@@ -204,6 +212,7 @@ if __FILE__ == $0
 		end
 	end
 
+	# Remove duplicate entries from requests
 	i = j = 0
 	to_pop = []
 	requests.each do |x|
@@ -214,17 +223,35 @@ if __FILE__ == $0
 		i += 1
 	end
 	to_pop.each { |x| requests.delete_at(x) }
-	requests.each { |x| x.put }
 
-	exit
+	# Sort requests array to hash, serv {} -> chan {} -> requests []
+	requests_hash = {}
+	requests.each do |x|
+		requests_hash[x.serv] = {} unless requests_hash.has_key? x.serv
+		requests_hash[x.serv][x.chan] = [] unless requests_hash[x.serv].has_key? x.chan
+		requests_hash[x.serv][x.chan] << x
+	end
 
-	sock = TCPSocket.open(_serv, 6667)
+	# Sort requests by pack
+	requests_hash.each do |k,v|
+		puts "#{k} ->"
+		v.each do |k,v|
+			puts "\t#{k} ->"
+			v = v.sort_by { |x| x.pack }.each { |x| puts "\t\t#{x}" }
+		end
+	end
+	#puts requests_hash
 
+	# Try and connect to the server
+	sock = TCPSocket.open(requests[0].serv, 6667)
+
+	# Message thread, to avoid blocking
 	t = Thread.new do
 		while true do
+			# Send the next XDCC request
 			if motd_end and nick_check and not $xdcc_sent
 				sleep 1 # Cool off before download
-				sock.puts "PRIVMSG #{_bot} :XDCC SEND #{_pack}"
+				sock.puts "PRIVMSG #{requests[0].bot} :XDCC SEND #{requests[0].pack}"
 				$xdcc_sent = true
 			end
 
@@ -236,16 +263,18 @@ if __FILE__ == $0
 				end
 			end
 
+			# XDCC bot's client doesn't support DCC RESUME, start from beginning
 			if $xdcc_sent and $xdcc_no_accept
-				puts "Connecting to: #{_bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
+				puts "Connecting to: #{requests[0].bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
 				dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
 			end
 		end
 	end
 
+	# H-here w-w-we g-go...
 	until sock.eof? do
 		full_msg = sock.gets
-		#puts full_msg
+		puts full_msg
 
 		if full_msg[0] == ':'
 			/^:(?<nick>.*) (?<type>.*) (?<chan>.*) :(?<msg>.*)$/ =~ full_msg
@@ -282,14 +311,14 @@ if __FILE__ == $0
 							end
 						end
 						puts "> #{msg}"
-					elsif nick =~ /^#{_bot}!(.*)$/i
+					elsif nick =~ /^#{requests[0].bot}!(.*)$/i
 						if msg =~ /already requested that pack/i
 							puts "! ERROR: #{msg}"
-							sock.puts "PRIVMSG #{_bot} :XDCC cancel"
+							sock.puts "PRIVMSG #{requests[0].bot} :XDCC cancel"
 							sock.puts 'QUIT'
 						elsif msg =~ /you have a dcc pending/i
 							puts "! ERROR: #{msg} - cancelling pending"
-							sock.puts "PRIVMSG #{_bot} :xdcc cancel"
+							sock.puts "PRIVMSG #{requests[0].bot} :xdcc cancel"
 						else
 							puts "! #{nick}: #{msg}"
 						end
@@ -297,7 +326,7 @@ if __FILE__ == $0
 				end
 			when "PRIVMSG"
 				puts full_msg
-				if $xdcc_sent and nick =~ /^#{_bot}!(.*)$/i
+				if $xdcc_sent and nick =~ /^#{requests[0].bot}!(.*)$/i
 					if msg =~ /^\001DCC SEND (.*) (.*) (.*) (.*)$/
 						tmp_fname = fname = $1
 						ip        = [$2.to_i].pack('N').unpack('C4') * '.'
@@ -306,8 +335,9 @@ if __FILE__ == $0
 						fname     =  $1 if fname =~ /^"(.*)"$/
 						$xdcc_ret = XDCC_SEND.new fname, fsize, ip, port
 
+						# Check if the for unfinished download amd try to resume
 						if File.exists? $xdcc_ret.fname and File.stat($xdcc_ret.fname).size < $xdcc_ret.fsize
-							sock.puts "PRIVMSG #{_bot} :\001DCC RESUME #{tmp_fname} #{$xdcc_ret.port} #{File.stat($xdcc_ret.fname).size}\001"
+							sock.puts "PRIVMSG #{requests[0].bot} :\001DCC RESUME #{tmp_fname} #{$xdcc_ret.port} #{File.stat($xdcc_ret.fname).size}\001"
 							$xdcc_accept = true
 							$xdcc_accept_time = Time.now
 							print "! Incomplete file detected. Attempting to resume..."
@@ -316,16 +346,18 @@ if __FILE__ == $0
 							$xdcc_ret.fname = safe_fname $xdcc_ret.fname
 						end
 
+						# It's a new download, start from beginning
 						Thread.new do
-							puts "Connecting to: #{_bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
+							puts "Connecting to: #{requests[0].bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
 							dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
 						end
 					elsif $xdcc_accept and $xdcc_ret != nil and not $xdcc_no_accept and msg =~ /^\001DCC ACCEPT (.*) (.*) (.*)$/
+						# DCC RESUME request accepted, continue the download!
 						$xdcc_accept_time = 0
 						puts "SUCCESS!"
 
 						Thread.new do
-							puts "Connecting to: #{_bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
+							puts "Connecting to: #{requests[0].bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
 							dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize, File.stat($xdcc_ret.fname).size
 						end
 					else
@@ -336,20 +368,20 @@ if __FILE__ == $0
 			when /^\d+?$/
 				type_i = type.to_i
 				case type_i
-				when 1
+				when 1 # Print welcome message, because it's nice
 					puts "! #{msg}"
-				when 376
+				when 376 # Mark the end of the MOTD
 					motd_end = true
-				when 400..533
+				when 400..533 # Handle errors, except 439
 					next if not ident_sent or type_i == 439 # Skip 439
 					puts "! ERROR: #{msg}"
 					sock.puts 'QUIT'
 				end
 			end
 		else
-			sock.puts "PONG :#{$1}" if full_msg =~ /^PING :(.*)$/
+			sock.puts "PONG :#{$1}" if full_msg =~ /^PING :(.*)$/ # We're still here!
 		end
 	end
-	Thread.kill(t)
+	Thread.kill(t) # Kill message thread
 end
 
