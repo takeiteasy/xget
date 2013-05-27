@@ -7,6 +7,7 @@ ident_sent = motd_end = nick_sent = nick_check = nick_valid = false
 $xdcc_sent = $xdcc_accept = $xdcc_no_accept = false
 $xdcc_accept_time = $xdcc_ret = nil
 
+# Class to hold DCC SEND info for when waiting for DCC ACCEPT
 class XDCC_SEND
 	attr_accessor :fname, :fsize, :ip, :port
 
@@ -22,6 +23,7 @@ class XDCC_SEND
 	end
 end
 
+# Class to hold XDCC requests
 class XDCC_REQ
 	attr_accessor :serv, :chan, :bot, :pack, :info
 
@@ -42,6 +44,7 @@ class XDCC_REQ
 	end
 end
 
+# Get closest relative size from bytes size
 def bytes_to_closest bytes
 	fsize_arr = [ 'B', 'KB', 'MB', 'GB', 'TB' ]
 	exp       = (Math.log(bytes) / Math.log(1024)).to_i
@@ -50,6 +53,7 @@ def bytes_to_closest bytes
 	return "#{bytes}#{fsize_arr[exp]}"
 end
 
+# Loop until there is no file with the same name
 def safe_fname fname
 	return fname if not File.exists? fname
 
@@ -64,7 +68,7 @@ def safe_fname fname
 end
 
 def dcc_download ip, port, fname, fsize, read = 0
-	fh   = File.open fname, (read == 0 ? "w" : "a")
+	fh   = File.open fname, (read == 0 ? "w" : "a") # Write or append
 	sock = TCPSocket.new ip, port
 
 	fsize_clean = bytes_to_closest fsize
@@ -240,7 +244,7 @@ if __FILE__ == $0
 			v2 = v2.sort_by { |x| x.pack }.each { |x| puts "\t\t#{x}" }
 		end
 	end
-	#puts requests_hash
+	puts
 
 	# Try and connect to the server
 	sock = TCPSocket.open(requests[0].serv, 6667)
