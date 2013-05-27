@@ -19,7 +19,7 @@ class XDCC_SEND
 	end
 
 	def to_s
-		"[ #{self.fname}, #{self.fsize}, #{self.ip}, #{self.port}"
+		"[ #{self.fname}, #{self.fsize}, #{self.ip}, #{self.port} ]"
 	end
 end
 
