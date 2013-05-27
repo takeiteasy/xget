@@ -235,9 +235,9 @@ if __FILE__ == $0
 	# Sort requests by pack
 	requests_hash.each do |k,v|
 		puts "#{k} ->"
-		v.each do |k,v|
-			puts "\t#{k} ->"
-			v = v.sort_by { |x| x.pack }.each { |x| puts "\t\t#{x}" }
+		v.each do |k2,v2|
+			puts "\t#{k2} ->"
+			v2 = v2.sort_by { |x| x.pack }.each { |x| puts "\t\t#{x}" }
 		end
 	end
 	#puts requests_hash
