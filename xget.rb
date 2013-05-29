@@ -76,7 +76,12 @@ def dcc_download ip, port, fname, fsize, read = 0
 	print "Downloading... "
 	while buf = sock.readpartial(8192)
 		read += buf.bytesize
-		print "\r\e[0KDownloading... #{bytes_to_closest read}/#{fsize_clean} @ #{buf.bytesize}B"
+		print "\r\e[0KDownloading... [ "
+		pc = read.to_f / fsize.to_f * 100
+		bars = (pc / 10).to_i
+		bars.times { print "#" }
+		(10 - bars).times { print " " }
+		print " ] #{pc}% #{bytes_to_closest read}/#{fsize_clean} @ #{buf.bytesize}B"
 
 		begin
 			sock.write_nonblock [read].pack('N')
@@ -104,7 +109,7 @@ end
 
 if __FILE__ == $0
 	opts = Slop.parse! do
-		banner ' Usage: xget.rb [options] [value] [links] [--files] [file1:file2:file3]'
+		banner " Usage: #{$0} [options] [value] [links] [--files] [file1:file2:file3]\n"
 		on :help, :ignore_case => true
 
 		on 'v', 'version', 'Print version' do
@@ -178,6 +183,11 @@ if __FILE__ == $0
 		opts['files'].each do |x|
 			File.open(x, "r").each_line { |y| to_check << y.chomp } if File.exists? x
 		end
+	end
+
+	if to_check.empty?
+		puts opts
+		abort "\n No jobs, nothing to do!"
 	end
 
 	# Parse to_check array for valid XDCC links, irc.serv.org/#chan/bot/pack
