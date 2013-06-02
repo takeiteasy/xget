@@ -81,7 +81,7 @@ def dcc_download ip, port, fname, fsize, read = 0
 		bars = (pc / 10).to_i
 		bars.times { print "#" }
 		(10 - bars).times { print " " }
-		print " ] #{pc}% #{bytes_to_closest read}/#{fsize_clean} @ #{buf.bytesize}B"
+		print " ] #{pc.round(2)}% #{bytes_to_closest read}/#{fsize_clean} @ #{buf.bytesize}B"
 
 		begin
 			sock.write_nonblock [read].pack('N')
@@ -98,7 +98,6 @@ def dcc_download ip, port, fname, fsize, read = 0
 	$xdcc_sent = false
 	$xdcc_accept = $xdcc_no_accept = false
 	$xdcc_accept_time = $xdcc_ret = nil
-	exit
 
 	puts " - SUCCESS: #{fname} downloaded"
 	return true
@@ -191,7 +190,7 @@ if __FILE__ == $0
 	end
 
 	# Parse to_check array for valid XDCC links, irc.serv.org/#chan/bot/pack
-	requests, tmp_range = [], []
+	tmp_requests, tmp_range = [], []
 	to_check.each do |x|
 		if x =~ /^(\w+?).(\w+?).(\w+?)\/#(\w+?)\/(.*)\/(.*)$/
 			serv = [$1, $2, $3].join(".")
@@ -214,11 +213,11 @@ if __FILE__ == $0
 					puts "! ERROR: Invalid pack ID in \"#{x}\""
 					next
 				end
-			requests.push XDCC_REQ.new serv, chan, bot, pack, info
+			tmp_requests.push XDCC_REQ.new serv, chan, bot, pack, info
 
 			# Convert range array to new requests
 			unless tmp_range.empty?
-				tmp_range.each { |y| requests.push XDCC_REQ.new serv, chan, bot, y, info }
+				tmp_range.each { |y| tmp_requests.push XDCC_REQ.new serv, chan, bot, y, info }
 				tmp_range.clear
 			end
 		else
@@ -229,173 +228,186 @@ if __FILE__ == $0
 	# Remove duplicate entries from requests
 	i = j = 0
 	to_pop = []
-	requests.each do |x|
-		requests.each do |y|
+	tmp_requests.each do |x|
+		tmp_requests.each do |y|
 			to_pop << j if x.eql? y if i != j
 			j += 1
 		end
 		i += 1
 	end
-	to_pop.each { |x| requests.delete_at(x) }
+	to_pop.each { |x| tmp_requests.delete_at(x) }
 
 	# Sort requests array to hash, serv {} -> chan {} -> requests []
-	requests_hash = {}
-	requests.each do |x|
-		requests_hash[x.serv] = {} unless requests_hash.has_key? x.serv
-		requests_hash[x.serv][x.chan] = [] unless requests_hash[x.serv].has_key? x.chan
-		requests_hash[x.serv][x.chan] << x
+	requests = {}
+	tmp_requests.each do |x|
+		requests[x.serv] = [] unless requests.has_key? x.serv
+		requests[x.serv] << x
 	end
 
 	# Sort requests by pack
-	requests_hash.each do |k,v|
+	requests.each do |k,v|
 		puts "#{k} ->"
-		v.each do |k2,v2|
-			puts "\t#{k2} ->"
-			v2 = v2.sort_by { |x| x.pack }.each { |x| puts "\t\t#{x}" }
-		end
+		v = v.sort_by { |x| [x.chan, x.pack] }.each { |x| puts "\t#{x}" }
 	end
 	puts
 
-	# Try and connect to the server
-	sock = TCPSocket.open(requests[0].serv, 6667)
+	# Go through each server
+	requests.each do |k, v|
+		# Try and connect to the server
+		sock = TCPSocket.open(k, 6667)
+		cur_req, max_req, x = -1, v.length, requests[k][0]
 
-	# Message thread, to avoid blocking
-	t = Thread.new do
-		while true do
-			# Send the next XDCC request
-			if motd_end and nick_check and not $xdcc_sent
-				sleep 1 # Cool off before download
-				sock.puts "PRIVMSG #{requests[0].bot} :XDCC SEND #{requests[0].pack}"
-				$xdcc_sent = true
-			end
+		# Message thread, to avoid blocking
+		t = Thread.new do
+			while true do
+				# Send the next XDCC request
+				if motd_end and nick_check and not $xdcc_sent
+					cur_req += 1
+					if cur_req >= max_req
+						sock.puts "QUIT" # Quit IRC server
+						Thread.kill t    # Kill message thread
+					end
+					x = requests[k][cur_req];
 
-			# Wait 3 seconds for a DCC ACCEPT response, if there isn't one, don't resume
-			if $xdcc_sent and $xdcc_accept and $xdcc_accept_time != nil
-				if (Time.now - $xdcc_accept_time).floor > 3
-					$xdcc_no_accept = true
-					puts "FAILED! Bot client doesn't support resume!"
+					sleep 1 # Cool off before download
+					sock.puts "PRIVMSG #{x.bot} :XDCC SEND #{x.pack}"
+					$xdcc_sent = true
 				end
-			end
 
-			# XDCC bot's client doesn't support DCC RESUME, start from beginning
-			if $xdcc_sent and $xdcc_no_accept
-				puts "Connecting to: #{requests[0].bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
-				dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
+				# Wait 3 seconds for a DCC ACCEPT response, if there isn't one, don't resume
+				if $xdcc_sent and $xdcc_accept and $xdcc_accept_time != nil
+					if (Time.now - $xdcc_accept_time).floor > 3
+						$xdcc_no_accept = true
+						puts "FAILED! Bot client doesn't support resume!"
+					end
+				end
+
+				# XDCC bot's client doesn't support DCC RESUME, start from beginning
+				if $xdcc_sent and $xdcc_no_accept
+					puts "Connecting to: #{x.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
+					dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
+				end
 			end
 		end
-	end
 
-	# H-here w-w-we g-go...
-	until sock.eof? do
-		full_msg = sock.gets
-		puts full_msg
+		# H-here w-w-we g-go...
+		until sock.eof? do
+			full_msg = sock.gets
+			#puts full_msg
 
-		if full_msg[0] == ':'
-			/^:(?<nick>.*) (?<type>.*) (?<chan>.*) :(?<msg>.*)$/ =~ full_msg
-			#puts "#{nick} - #{type} - #{chan} - #{msg}"
+			if full_msg[0] == ':'
+				/^:(?<nick>.*) (?<type>.*) (?<chan>.*) :(?<msg>.*)$/ =~ full_msg
+				#puts "#{nick} - #{type} - #{chan} - #{msg}"
 
-			case type
-			when "NOTICE"
-				if not ident_sent
-					if chan == "AUTH"
-						if msg =~ /Checking Ident/i
-							puts "! Sending ident..."
-							sock.puts "PASS #{config["*"]["pass"]}"
-							sock.puts "NICK #{config["*"]["nick"]}"
-							sock.puts "USER #{config["*"]["user"]} 0 * #{config["*"]["realname"]}"
-							ident_sent = true
-						elsif msg =~ /No Ident response/i or msg =~ /Erroneous Nickname/i
-							puts "! ERROR: Ident failed"
-							sock.puts 'QUIT'
-						end
-						puts "> #{msg}"
-					end
-				else
-					if nick =~ /^NickServ!(.*)$/
-						if not nick_sent and config["*"]["nickserv"] != nil
-							sock.puts "PRIVMSG NickServ :IDENTIFY #{config["*"]["nickserv"]}"
-							nick_sent = true
-						elsif nick_sent and not nick_check
-							if msg =~ /Password incorrect/i
-								nick_valid = false
-								nick_check = true
-							elsif msg =~ /Password accepted/i
-								nick_valid = true
-								nick_check = true
+				case type
+				when "NOTICE"
+					if not ident_sent
+						if chan == "AUTH"
+							if msg =~ /Checking Ident/i
+								puts "! Sending ident..."
+								sock.puts "PASS #{config[x.info]["pass"]}"
+								sock.puts "NICK #{config[x.info]["nick"]}"
+								sock.puts "USER #{config[x.info]["user"]} 0 * #{config[x.info]["realname"]}"
+								ident_sent = true
+							elsif msg =~ /No Ident response/i or msg =~ /Erroneous Nickname/i
+								puts "! ERROR: Ident failed"
+								sock.puts 'QUIT'
 							end
-						end
-						puts "> #{msg}"
-					elsif nick =~ /^#{requests[0].bot}!(.*)$/i
-						if msg =~ /already requested that pack/i
-							puts "! ERROR: #{msg}"
-							sock.puts "PRIVMSG #{requests[0].bot} :XDCC cancel"
-							sock.puts 'QUIT'
-						elsif msg =~ /you have a dcc pending/i
-							puts "! ERROR: #{msg} - cancelling pending"
-							sock.puts "PRIVMSG #{requests[0].bot} :xdcc cancel"
-						else
-							puts "! #{nick}: #{msg}"
-						end
-					end
-				end
-			when "PRIVMSG"
-				puts full_msg
-				if $xdcc_sent and nick =~ /^#{requests[0].bot}!(.*)$/i
-					if msg =~ /^\001DCC SEND (.*) (.*) (.*) (.*)$/
-						tmp_fname = fname = $1
-						ip        = [$2.to_i].pack('N').unpack('C4') * '.'
-						port      =  $3.to_i
-						fsize     =  $4.to_i
-						fname     =  $1 if fname =~ /^"(.*)"$/
-						$xdcc_ret = XDCC_SEND.new fname, fsize, ip, port
-
-						# Check if the for unfinished download amd try to resume
-						if File.exists? $xdcc_ret.fname and File.stat($xdcc_ret.fname).size < $xdcc_ret.fsize
-							sock.puts "PRIVMSG #{requests[0].bot} :\001DCC RESUME #{tmp_fname} #{$xdcc_ret.port} #{File.stat($xdcc_ret.fname).size}\001"
-							$xdcc_accept = true
-							$xdcc_accept_time = Time.now
-							print "! Incomplete file detected. Attempting to resume..."
-							next # Skip and wait for "DCC ACCEPT"
-						elsif File.exists? $xdcc_ret.fname
-							$xdcc_ret.fname = safe_fname $xdcc_ret.fname
-						end
-
-						# It's a new download, start from beginning
-						Thread.new do
-							puts "Connecting to: #{requests[0].bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
-							dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
-						end
-					elsif $xdcc_accept and $xdcc_ret != nil and not $xdcc_no_accept and msg =~ /^\001DCC ACCEPT (.*) (.*) (.*)$/
-						# DCC RESUME request accepted, continue the download!
-						$xdcc_accept_time = 0
-						puts "SUCCESS!"
-
-						Thread.new do
-							puts "Connecting to: #{requests[0].bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
-							dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize, File.stat($xdcc_ret.fname).size
+							puts "> #{msg}"
 						end
 					else
+						if nick =~ /^NickServ!(.*)$/
+							if not nick_sent and config[x.info]["nickserv"] != nil
+								sock.puts "PRIVMSG NickServ :IDENTIFY #{config[x.info]["nickserv"]}"
+								nick_sent = true
+							elsif nick_sent and not nick_check
+								if msg =~ /Password incorrect/i
+									nick_valid = false
+									nick_check = true
+								elsif msg =~ /Password accepted/i
+									nick_valid = true
+									nick_check = true
+								end
+							end
+							puts "> #{msg}"
+						elsif nick =~ /^#{x.bot}!(.*)$/i
+							if msg =~ /already requested that pack/i
+								puts "! ERROR: #{msg}"
+								sock.puts "PRIVMSG #{x.bot} :XDCC cancel"
+								sock.puts 'QUIT'
+							elsif msg =~ /you have a dcc pending/i
+								puts "! ERROR: #{msg} - cancelling pending"
+								sock.puts "PRIVMSG #{x.bot} :xdcc cancel"
+							else
+								puts "! #{nick}: #{msg}"
+							end
+						end
+					end
+				when "PRIVMSG"
+					puts full_msg
+					if $xdcc_sent and nick =~ /^#{x.bot}!(.*)$/i
+						if msg =~ /^\001DCC SEND (.*) (.*) (.*) (.*)$/
+							tmp_fname = fname = $1
+							ip        = [$2.to_i].pack('N').unpack('C4') * '.'
+							port      =  $3.to_i
+							fsize     =  $4.to_i
+							fname     =  $1 if fname =~ /^"(.*)"$/
+							$xdcc_ret = XDCC_SEND.new fname, fsize, ip, port
+
+							# Check if the for unfinished download amd try to resume
+							if File.exists? $xdcc_ret.fname and File.stat($xdcc_ret.fname).size < $xdcc_ret.fsize
+								sock.puts "PRIVMSG #{x.bot} :\001DCC RESUME #{tmp_fname} #{$xdcc_ret.port} #{File.stat($xdcc_ret.fname).size}\001"
+								$xdcc_accept = true
+								$xdcc_accept_time = Time.now
+								print "! Incomplete file detected. Attempting to resume..."
+								next # Skip and wait for "DCC ACCEPT"
+							elsif File.exists? $xdcc_ret.fname
+								$xdcc_ret.fname = safe_fname $xdcc_ret.fname
+							end
+
+							# It's a new download, start from beginning
+							Thread.new do
+								puts "Connecting to: #{x.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
+								dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
+							end
+						elsif $xdcc_accept and $xdcc_ret != nil and not $xdcc_no_accept and msg =~ /^\001DCC ACCEPT (.*) (.*) (.*)$/
+							# DCC RESUME request accepted, continue the download!
+							$xdcc_accept_time = 0
+							puts "SUCCESS!"
+
+							Thread.new do
+								puts "Connecting to: #{x.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
+								dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize, File.stat($xdcc_ret.fname).size
+							end
+						else
+							puts "! ERROR: #{msg}"
+							sock.puts 'QUIT'
+						end
+					end
+				when /^\d+?$/
+					type_i = type.to_i
+					case type_i
+					when 1 # Print welcome message, because it's nice
+						puts "! #{msg}"
+					when 376 # Mark the end of the MOTD
+						motd_end = true
+					when 400..533 # Handle errors, except 439
+						next if not ident_sent or type_i == 439 # Skip 439
 						puts "! ERROR: #{msg}"
 						sock.puts 'QUIT'
 					end
 				end
-			when /^\d+?$/
-				type_i = type.to_i
-				case type_i
-				when 1 # Print welcome message, because it's nice
-					puts "! #{msg}"
-				when 376 # Mark the end of the MOTD
-					motd_end = true
-				when 400..533 # Handle errors, except 439
-					next if not ident_sent or type_i == 439 # Skip 439
-					puts "! ERROR: #{msg}"
-					sock.puts 'QUIT'
+			else
+				case full_msg
+				when /^PING :(.*)$/
+					sock.puts "PONG :#{$1}"
+				when /^ERROR :(.*)$/
+					puts $1
+				else
+					puts full_msg
 				end
 			end
-		else
-			sock.puts "PONG :#{$1}" if full_msg =~ /^PING :(.*)$/ # We're still here!
 		end
 	end
-	Thread.kill(t) # Kill message thread
 end
 
