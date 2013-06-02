@@ -22,6 +22,10 @@ xget irc.rizon.net/#news/ginpachi-sensei/1
 xget irc.rizon.net/#news/ginpachi-sensei/41..46
 </pre>
 
+You may also benefit from making a config file, see .xget.conf for a simple<br/>
+example config. You can alternativly pass them in arguments, see --help.
+By default, config files are read from "~/.xget.conf"
+
 ## License
 
 <pre>

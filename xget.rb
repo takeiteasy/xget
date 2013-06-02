@@ -255,7 +255,7 @@ if __FILE__ == $0
 	requests.each do |k, v|
 		# Try and connect to the server
 		sock = TCPSocket.open(k, 6667)
-		cur_req, max_req, x = -1, v.length, requests[k][0]
+		cur_req, max_req, x, last_chan = -1, v.length, requests[k][0], ""
 
 		# Message thread, to avoid blocking
 		t = Thread.new do
@@ -268,6 +268,11 @@ if __FILE__ == $0
 						Thread.kill t    # Kill message thread
 					end
 					x = requests[k][cur_req];
+
+					if x.chan != last_chan
+						last_chan = x.chan
+						sock.puts "JOIN #{x.chan}"
+					end
 
 					sleep 1 # Cool off before download
 					sock.puts "PRIVMSG #{x.bot} :XDCC SEND #{x.pack}"
