@@ -23,6 +23,7 @@ class XDCC_SEND
   end
 end
 
+
 # Class to hold XDCC requests
 class XDCC_REQ
   attr_accessor :serv, :chan, :bot, :pack, :info
@@ -55,14 +56,14 @@ end
 
 # Loop until there is no file with the same name
 def safe_fname fname
-  return fname if not File.exists? fname
+  return fname unless File.exists? fname
 
   ext  = File.extname fname
   base = File.basename(fname, ext)
   cur  = 2
   while true
     test = "#{base} (#{cur})#{ext}"
-    return test if not File.exists? test
+    return test unless File.exists? test
     cur += 1
   end
 end
@@ -139,7 +140,7 @@ if __FILE__ == $0
   config_loc = opts["config"]
   if config_loc == nil or not File.exists? config_loc
     config_loc = File.expand_path "~/.xget.conf"
-    config_loc = ".xget.conf" if not File.exists? config_loc
+    config_loc = ".xget.conf" unless File.exists? config_loc
   end
 
   # Insert config settings from arguments into config hash
@@ -255,7 +256,7 @@ if __FILE__ == $0
   requests.each do |k, v|
     # Try and connect to the server
     sock = TCPSocket.open(k, 6667)
-    cur_req, max_req, x, last_chan = -1, v.length, requests[k][0], ""
+    cur_req, max_req, x, last_chan = -1, v.length, v[0], ""
 
     # Message thread, to avoid blocking
     t = Thread.new do
@@ -267,7 +268,7 @@ if __FILE__ == $0
             sock.puts "QUIT" # Quit IRC server
             Thread.kill t    # Kill message thread
           end
-          x = requests[k][cur_req];
+          x = v[cur_req];
 
           if x.chan != last_chan
             last_chan = x.chan
@@ -397,7 +398,7 @@ if __FILE__ == $0
           when 376 # Mark the end of the MOTD
             motd_end = true
           when 400..533 # Handle errors, except 439
-            next if not ident_sent or type_i == 439 # Skip 439
+            next unless ident_sent or type_i == 439 # Skip 439
             puts "! ERROR: #{msg}"
             sock.puts 'QUIT'
           end
