@@ -179,7 +179,7 @@ if __FILE__ == $0
 
   # Take remaining arguments and all lines from --files arg and put into array
   to_check = ARGV
-  unless opts['files'] == nil or opts['files'].empty?
+  if opts['files'] != nil and not opts['files'].empty?
     opts['files'].each do |x|
       File.open(x, "r").each_line { |y| to_check << y.chomp } if File.exists? x
     end
@@ -271,6 +271,7 @@ if __FILE__ == $0
           x = v[cur_req];
 
           if x.chan != last_chan
+            sock.puts "PART #{last_chan}" unless last_chan == ""
             last_chan = x.chan
             sock.puts "JOIN #{x.chan}"
           end
@@ -350,7 +351,6 @@ if __FILE__ == $0
             end
           end
         when "PRIVMSG"
-          puts full_msg
           if $xdcc_sent and nick =~ /^#{x.bot}!(.*)$/i
             if msg =~ /^\001DCC SEND (.*) (.*) (.*) (.*)$/
               tmp_fname = fname = $1
@@ -398,7 +398,7 @@ if __FILE__ == $0
           when 376 # Mark the end of the MOTD
             motd_end = true
           when 400..533 # Handle errors, except 439
-            next unless ident_sent or type_i == 439 # Skip 439
+            next if not ident_sent or type_i == 439 # Skip 439
             puts "! ERROR: #{msg}"
             sock.puts 'QUIT'
           end
