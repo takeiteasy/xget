@@ -2,6 +2,7 @@
 %w(socket thread slop).each { |r| require r }
 
 config = {}
+out_dir = "./"
 ident_sent = motd_end = nick_sent = nick_check = nick_valid = false
 
 $xdcc_sent = $xdcc_accept = $xdcc_no_accept = false
@@ -100,10 +101,10 @@ def dcc_download ip, port, fname, fsize, read = 0
   $xdcc_accept = $xdcc_no_accept = false
   $xdcc_accept_time = $xdcc_ret = nil
 
-  puts " - SUCCESS: #{fname} downloaded"
+  puts " - SUCCESS: #{File.basename fname} downloaded"
   return true
 rescue EOFError
-  puts " - FAILED: #{fname} unsuccessful"
+  puts " - FAILED: #{File.basename fname} unsuccessful"
   return false
 end
 
@@ -124,6 +125,7 @@ if __FILE__ == $0
     on 'realname=', 'Realname for \'USER\' Ident'
     on 'nickserv=', 'Password for Nickserv'
     on 'files=',    'Pass list of files to parse for links', as: Array, delimiter: ':'
+    on 'out=',      'Output directory to save fiels to', :default => "./"
   end
 
   if opts.help?
@@ -148,6 +150,11 @@ if __FILE__ == $0
   config[cur_block] = {}
   %w(user nick pass realname nickserv).each { |x| config[cur_block][x] = opts[x] unless opts[x] == nil }
 
+  # Check if specified output directory actually exists
+  abort "! ERROR: Out directory, \"#{opts["out"]}\" doesn't exist!" unless Dir.exists? opts["out"]
+  out_dir = opts["out"].dup
+  out_dir << "/" unless out_dir[-1] == "/"
+
   # Parse config
   config_copies = {}
   File.open(config_loc, "r").each_line do |line|
@@ -169,6 +176,15 @@ if __FILE__ == $0
       # Set current block to the new header
       config[cur_block] = {} unless config.has_key? cur_block
     elsif line =~ /^(\w+?)=(.*)$/
+      # Check if current line is specifying out directory
+      if $1 == "out"
+        t_out_dir = File.expand_path $2
+        abort "! ERROR: Out directory, \"#{t_out_dir}\" doesn't exist!" unless Dir.exists? t_out_dir
+        out_dir = t_out_dir
+        out_dir << "/" unless out_dir[-1] == "/"
+        next
+      end
+
       # Add value to current header, default is *
       config[cur_block][$1] = $2 unless config[cur_block].has_key? $1
     end
@@ -243,6 +259,11 @@ if __FILE__ == $0
   tmp_requests.each do |x|
     requests[x.serv] = [] unless requests.has_key? x.serv
     requests[x.serv] << x
+  end
+
+  if requests.empty?
+    puts opts
+    abort "\n No jobs, nothing to do!"
   end
 
   # Sort requests by pack
@@ -345,6 +366,10 @@ if __FILE__ == $0
               elsif msg =~ /you have a dcc pending/i
                 puts "! ERROR: #{msg} - cancelling pending"
                 sock.puts "PRIVMSG #{x.bot} :xdcc cancel"
+              elsif msg =~ /closing connection/i
+                puts "! ERROR: #{msg} - exiting"
+                sock.puts "PRIVMSG #{x.bot} :xdcc cancel"
+                sock.puts 'QUIT'
               else
                 puts "! #{nick}: #{msg}"
               end
@@ -358,6 +383,7 @@ if __FILE__ == $0
               port      =  $3.to_i
               fsize     =  $4.to_i
               fname     =  $1 if fname =~ /^"(.*)"$/
+              fname     = (out_dir.dup << fname)
               $xdcc_ret = XDCC_SEND.new fname, fsize, ip, port
 
               # Check if the for unfinished download amd try to resume
