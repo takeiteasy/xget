@@ -283,7 +283,7 @@ if __FILE__ == $0
     t = Thread.new do
       while true do
         # Send the next XDCC request
-        if motd_end and nick_check and not $xdcc_sent
+        if motd_end and not $xdcc_sent
           cur_req += 1
           if cur_req >= max_req
             sock.puts "QUIT" # Quit IRC server
@@ -321,7 +321,7 @@ if __FILE__ == $0
     # H-here w-w-we g-go...
     until sock.eof? do
       full_msg = sock.gets
-      #puts full_msg
+      puts full_msg
 
       if full_msg[0] == ':'
         /^:(?<nick>.*) (?<type>.*) (?<chan>.*) :(?<msg>.*)$/ =~ full_msg
@@ -404,7 +404,8 @@ if __FILE__ == $0
               end
             elsif $xdcc_accept and $xdcc_ret != nil and not $xdcc_no_accept and msg =~ /^\001DCC ACCEPT (.*) (.*) (.*)$/
               # DCC RESUME request accepted, continue the download!
-              $xdcc_accept_time = 0
+              $xdcc_accept_time = nil
+              $xdcc_accept = false
               puts "SUCCESS!"
 
               Thread.new do
