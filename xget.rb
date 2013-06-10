@@ -321,7 +321,7 @@ if __FILE__ == $0
     # H-here w-w-we g-go...
     until sock.eof? do
       full_msg = sock.gets
-      puts full_msg
+      #puts full_msg
 
       if full_msg[0] == ':'
         /^:(?<nick>.*) (?<type>.*) (?<chan>.*) :(?<msg>.*)$/ =~ full_msg
@@ -358,7 +358,7 @@ if __FILE__ == $0
                 end
               end
               puts "> #{msg}"
-            elsif nick =~ /^#{x.bot}!(.*)$/i
+            elsif nick =~ /^#{Regexp.escape x.bot}!(.*)$/i
               if msg =~ /already requested that pack/i
                 puts "! ERROR: #{msg}"
                 sock.puts "PRIVMSG #{x.bot} :XDCC cancel"
@@ -376,7 +376,7 @@ if __FILE__ == $0
             end
           end
         when "PRIVMSG"
-          if $xdcc_sent and nick =~ /^#{x.bot}!(.*)$/i
+          if $xdcc_sent and nick =~ /^#{Regexp.escape x.bot}!(.*)$/i
             if msg =~ /^\001DCC SEND (.*) (.*) (.*) (.*)$/
               tmp_fname = fname = $1
               ip        = [$2.to_i].pack('N').unpack('C4') * '.'

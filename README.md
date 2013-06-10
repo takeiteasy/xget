@@ -26,6 +26,11 @@ You may also benefit from making a config file, see .xget.conf for a simple<br/>
 example config. You can alternativly pass them in arguments, see --help.
 By default, config files are read from "~/.xget.conf"
 
+## Todo
+
+1. Update download status less often, to avoid flickering
+2. Add transfer rate to download status, instead of just last read size
+
 ## License
 
 <pre>
