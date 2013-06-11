@@ -60,7 +60,7 @@ def safe_fname fname
   return fname unless File.exists? fname
 
   ext  = File.extname fname
-  base = File.basename(fname, ext)
+  base = File.basename fname, ext
   cur  = 2
   while true
     test = "#{base} (#{cur})#{ext}"
@@ -303,7 +303,7 @@ if __FILE__ == $0
         end
 
         # Wait 3 seconds for a DCC ACCEPT response, if there isn't one, don't resume
-        if $xdcc_sent and $xdcc_accept and $xdcc_accept_time != nil
+        if $xdcc_sent and $xdcc_accept and not $xdcc_accept_time.nil?
           if (Time.now - $xdcc_accept_time).floor > 3
             $xdcc_no_accept = true
             puts "FAILED! Bot client doesn't support resume!"
