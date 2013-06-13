@@ -52,7 +52,7 @@ def bytes_to_closest bytes
   exp       = (Math.log(bytes) / Math.log(1024)).to_i
   exp       = fsize_arr.length if exp > fsize_arr.length
   bytes    /= 1024 ** exp
-  return "#{bytes}#{fsize_arr[exp]}"
+  return "#{bytes.round(2)}#{fsize_arr[exp]}"
 end
 
 # Loop until there is no file with the same name
@@ -61,9 +61,11 @@ def safe_fname fname
 
   ext  = File.extname fname
   base = File.basename fname, ext
+  dir  = File.dirname fname
+
   cur  = 2
   while true
-    test = "#{base} (#{cur})#{ext}"
+    test = "#{dir}/#{base} (#{cur})#{ext}"
     return test unless File.exists? test
     cur += 1
   end
@@ -74,16 +76,26 @@ def dcc_download ip, port, fname, fsize, read = 0
   sock = TCPSocket.new ip, port
 
   fsize_clean = bytes_to_closest fsize
+  avgs, last_check = [], Time.now - 2
 
-  print "Downloading... "
-  while buf = sock.readpartial(8192)
-    read += buf.bytesize
+  print_bar = ->() {
     print "\r\e[0KDownloading... [ "
     pc = read.to_f / fsize.to_f * 100
     bars = (pc / 10).to_i
     bars.times { print "#" }
     (10 - bars).times { print " " }
-    print " ] #{pc.round(2)}% #{bytes_to_closest read}/#{fsize_clean} @ #{buf.bytesize}B"
+    avg = bytes_to_closest (avgs.inject(:+).to_f / avgs.length) * 1024
+    print " ] #{pc.round(2)}% #{bytes_to_closest read}/#{fsize_clean} @ #{avg}/s"
+
+    last_check = Time.now
+    avgs.clear
+  }
+
+  print "Downloading... "
+  while buf = sock.readpartial(8192)
+    read += buf.bytesize
+    avgs << buf.bytesize
+    print_bar.call if (Time.now - last_check) >= 1 and not avgs.empty?
 
     begin
       sock.write_nonblock [read].pack('N')
@@ -93,6 +105,7 @@ def dcc_download ip, port, fname, fsize, read = 0
     fh << buf
     break if read >= fsize
   end
+  print_bar.call unless avgs.empty?
 
   sock.close
   fh.close
