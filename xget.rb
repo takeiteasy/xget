@@ -46,6 +46,13 @@ class XDCC_REQ
   end
 end
 
+# Extend array with averages method
+class Array
+  def average
+    inject(:+) / count
+  end
+end
+
 # Get closest relative size from bytes size
 def bytes_to_closest bytes
   fsize_arr = [ 'B', 'KB', 'MB', 'GB', 'TB' ]
@@ -84,7 +91,7 @@ def dcc_download ip, port, fname, fsize, read = 0
     bars = (pc / 10).to_i
     bars.times { print "#" }
     (10 - bars).times { print " " }
-    avg = bytes_to_closest (avgs.inject(:+).to_f / avgs.length) * 1024
+    avg = bytes_to_closest avgs.average * 1024
     print " ] #{pc.round(2)}% #{bytes_to_closest read}/#{fsize_clean} @ #{avg}/s"
 
     last_check = Time.now
@@ -153,7 +160,7 @@ if __FILE__ == $0
 
   # Get the config location
   config_loc = opts["config"]
-  if config_loc == nil or not File.exists? config_loc
+  if config_loc.nil? or not File.exists? config_loc
     config_loc = File.expand_path "~/.xget.conf"
     config_loc = ".xget.conf" unless File.exists? config_loc
   end
@@ -161,7 +168,7 @@ if __FILE__ == $0
   # Insert config settings from arguments into config hash
   cur_block = "*"
   config[cur_block] = {}
-  %w(user nick pass realname nickserv).each { |x| config[cur_block][x] = opts[x] unless opts[x] == nil }
+  %w(user nick pass realname nickserv).each { |x| config[cur_block][x] = opts[x] unless opts[x].nil? }
 
   # Check if specified output directory actually exists
   abort "! ERROR: Out directory, \"#{opts["out"]}\" doesn't exist!" unless Dir.exists? opts["out"]
