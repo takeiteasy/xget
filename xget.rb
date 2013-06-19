@@ -58,7 +58,7 @@ def bytes_to_closest bytes
   fsize_arr = [ 'B', 'KB', 'MB', 'GB', 'TB' ]
   exp       = (Math.log(bytes) / Math.log(1024)).to_i
   exp       = fsize_arr.length if exp > fsize_arr.length
-  bytes    /= 1024 ** exp
+  bytes    /= 1024.0 ** exp
   return "#{bytes.round(2)}#{fsize_arr[exp]}"
 end
 
@@ -86,31 +86,36 @@ def dcc_download ip, port, fname, fsize, read = 0
   avgs, last_check = [], Time.now - 2
 
   print_bar = ->() {
-    print "\r\e[0KDownloading... [ "
-    pc = read.to_f / fsize.to_f * 100
+    print "\r\e[0K> [ "
+    pc = read.to_f / fsize.to_f * 100.0
     bars = (pc / 10).to_i
     bars.times { print "#" }
     (10 - bars).times { print " " }
-    avg = bytes_to_closest avgs.average * 1024
-    print " ] #{pc.round(2)}% #{bytes_to_closest read}/#{fsize_clean} @ #{avg}/s"
+    avg = avgs.average * 1024.0
+    time_rem = Time.at(fsize / avg).gmtime.strftime('%Hh %Mm %Ss')
+    print " ] #{pc.round(2)}% #{bytes_to_closest read}/#{fsize_clean} @ #{bytes_to_closest avg}/s in #{time_rem}"
 
     last_check = Time.now
     avgs.clear
   }
 
-  print "Downloading... "
-  while buf = sock.readpartial(8192)
-    read += buf.bytesize
-    avgs << buf.bytesize
-    print_bar.call if (Time.now - last_check) >= 1 and not avgs.empty?
+  begin
+    while buf = sock.readpartial(8192)
+      read += buf.bytesize
+      avgs << buf.bytesize
+      print_bar.call if (Time.now - last_check) >= 1 and not avgs.empty?
 
-    begin
-      sock.write_nonblock [read].pack('N')
-    rescue Errno::EWOULDBLOCK
+      begin
+        sock.write_nonblock [read].pack('N')
+      rescue Errno::EWOULDBLOCK
+      end
+
+      fh << buf
+      break if read >= fsize
     end
-
-    fh << buf
-    break if read >= fsize
+  rescue EOFError
+    puts " - FAILED: #{File.basename fname} unsuccessful"
+    return false
   end
   print_bar.call unless avgs.empty?
 
@@ -123,9 +128,6 @@ def dcc_download ip, port, fname, fsize, read = 0
 
   puts " - SUCCESS: #{File.basename fname} downloaded"
   return true
-rescue EOFError
-  puts " - FAILED: #{File.basename fname} unsuccessful"
-  return false
 end
 
 if __FILE__ == $0
@@ -134,7 +136,7 @@ if __FILE__ == $0
     on :help, :ignore_case => true
 
     on 'v', 'version', 'Print version' do
-      puts "xget: version 0.0.0"
+      puts "xget: version 1.1.2"
       exit
     end
 
