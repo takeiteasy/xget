@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 %w(socket thread slop).each { |r| require r }
 
+version = "1.1.5"
 config = {}
 out_dir = "./"
 ident_sent = motd_end = nick_sent = nick_check = nick_valid = false
@@ -92,7 +93,7 @@ def dcc_download ip, port, fname, fsize, read = 0
     bars.times { print "#" }
     (10 - bars).times { print " " }
     avg = avgs.average * 1024.0
-    time_rem = Time.at(fsize / avg).gmtime.strftime('%Hh %Mm %Ss')
+    time_rem = Time.at((fsize - read) / avg).gmtime.strftime('%Hh %Mm %Ss')
     print " ] #{pc.round(2)}% #{bytes_to_closest read}/#{fsize_clean} @ #{bytes_to_closest avg}/s in #{time_rem}"
 
     last_check = Time.now
@@ -136,7 +137,7 @@ if __FILE__ == $0
     on :help, :ignore_case => true
 
     on 'v', 'version', 'Print version' do
-      puts "xget: version 1.1.2"
+      puts "xget: version #{version}"
       exit
     end
 
