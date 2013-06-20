@@ -170,7 +170,7 @@ if __FILE__ == $0
   # Insert config settings from arguments into config hash
   cur_block = "*"
   config[cur_block] = {}
-  %w(user nick pass realname nickserv).each { |x| config[cur_block][x] = opts[x] unless opts[x].nil? }
+  %w(user nick pass realname nickserv).each { |x| config[cur_block][x.to_sym] = opts[x] unless opts[x].nil? }
 
   # Check if specified output directory actually exists
   abort "! ERROR: Out directory, \"#{opts["out"]}\" doesn't exist!" unless Dir.exists? opts["out"]
@@ -208,7 +208,8 @@ if __FILE__ == $0
       end
 
       # Add value to current header, default is *
-      config[cur_block][$1] = $2 unless config[cur_block].has_key? $1
+      t_sym = $1.downcase.to_sym
+      config[cur_block][t_sym] = $2 unless config[cur_block].has_key? t_sym
     end
   end
 
@@ -355,9 +356,9 @@ if __FILE__ == $0
             if chan == "AUTH"
               if msg =~ /Checking Ident/i
                 puts "! Sending ident..."
-                sock.puts "PASS #{config[x.info]["pass"]}"
-                sock.puts "NICK #{config[x.info]["nick"]}"
-                sock.puts "USER #{config[x.info]["user"]} 0 * #{config[x.info]["realname"]}"
+                sock.puts "PASS #{config[x.info][:pass]}"
+                sock.puts "NICK #{config[x.info][:nick]}"
+                sock.puts "USER #{config[x.info][:user]} 0 * #{config[x.info][:realname]}"
                 ident_sent = true
               elsif msg =~ /No Ident response/i or msg =~ /Erroneous Nickname/i
                 puts "! ERROR: Ident failed"
@@ -367,8 +368,8 @@ if __FILE__ == $0
             end
           else
             if nick =~ /^NickServ!(.*)$/
-              if not nick_sent and config[x.info]["nickserv"] != nil
-                sock.puts "PRIVMSG NickServ :IDENTIFY #{config[x.info]["nickserv"]}"
+              if not nick_sent and config[x.info][:nickserv] != nil
+                sock.puts "PRIVMSG NickServ :IDENTIFY #{config[x.info][:nickserv]}"
                 nick_sent = true
               elsif nick_sent and not nick_check
                 if msg =~ /Password incorrect/i
