@@ -1,6 +1,6 @@
 # xget
 
-xget is a simple IRC client/bot that downloads fils from XDCC servers,<br/>
+xget is a simple IRC client/bot that downloads files from XDCC servers,<br/>
 xget also supports DCC RESUME, so if the connection is cut off, you can continue easily.</br>
 Pass the XDCC server, channel, bot and pack as a sort of link and xget does the rest.<br/>
 Links can be passed either through the arguments, or in a file, which is read line by line.<br/>
@@ -25,6 +25,11 @@ xget irc.rizon.net/#news/ginpachi-sensei/41..46
 You may also benefit from making a config file, see .xget.conf for a simple<br/>
 example config. You can alternativly pass them in arguments, see --help.
 By default, config files are read from "~/.xget.conf"
+
+## To-do
+
+1. Change transfer speed to [K/M]iB/s instead of MB/s
+2. Make remaining transfer time more accurate
 
 ## License
 
