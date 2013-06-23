@@ -79,6 +79,7 @@ def safe_fname fname
   end
 end
 
+# Get a close relative time remaining, in words
 def time_distance t
   if t < 60
     case t
@@ -89,7 +90,7 @@ def time_distance t
     when 20..39 then "half a minute"
     else "less than a minute"
     end
-  else
+  else # Use minutes, to aovid big numbers
     t = t / 60.0
     case t.to_i
     when 1            then "about a minute"
@@ -103,24 +104,31 @@ def time_distance t
   end
 end
 
+# Get elapsed time in words
 def time_elapsed t
   return "instantly!" if t <= 0
 
-  suffix = [ "seconds", "minutes", "hours", "days", "months", "years" ];
+  # Get the GMTime from seconds and split
   ta = Time.at(t).gmtime.strftime('%S|%M|%H|%-d|%-m|%Y').split('|', 6).collect { |i| i.to_i }
   ta[-1] -= 1970 # fuck the police
   ta[-2] -= 1    # fuck, fuck
   ta[-3] -= 1    # fuck the police
 
+  # Remove the 0 digets
   i = 0
   ta.reverse.each do |x|
     break if x != 0
     i += 1
   end
 
+  # Unit suffixes
+  suffix = [ "seconds", "minutes", "hours", "days", "months", "years" ];
+  # Don't use plural if x is 1
   plural     = ->(x, y) { x == 1 ? y[0..-2] : y }
+  # Format string to "value unit"
   format_str = ->(x)    { "#{ta[x]} #{plural[ta[x], suffix[x]]}, " }
 
+  # Form the string
   ta = ta.take(ta.length - i)
   str = ""
   (ta.length - 1).downto(0) { |x| str += format_str[x] }
@@ -134,6 +142,7 @@ def dcc_download ip, port, fname, fsize, read = 0
   fsize_clean = bytes_to_closest fsize
   avgs, last_check, start_time = [], Time.now - 2, Time.now
 
+  # Form the status bar
   print_bar = ->() {
     print "\r\e[0K> [ "
     pc = read.to_f / fsize.to_f * 100.0
@@ -141,7 +150,6 @@ def dcc_download ip, port, fname, fsize, read = 0
     bars.times { print "#" }
     (10 - bars).times { print " " }
     avg = avgs.average * 1024.0
-    #time_rem = Time.at(((fsize - read) / avg) * 8).gmtime.strftime('%Hh %Mm %Ss')
     time_rem = time_distance ((fsize - read) / avg) * 8
     print " ] #{pc.round(2)}% #{bytes_to_closest read}/#{fsize_clean} @ #{bytes_to_closest avg}/s in #{time_rem}"
 
