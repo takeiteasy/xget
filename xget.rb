@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
-%w(socket thread slop).each { |r| require r }
+%w(socket thread slop timeout).each { |r| require r }
 
-version = "1.1.6"
+version = "1.1.7"
 config = {}
 out_dir = "./"
 ident_sent = motd_end = nick_sent = nick_check = nick_valid = false
@@ -151,19 +151,21 @@ def dcc_download ip, port, fname, fsize, read = 0
 
   begin
     while buf = sock.readpartial(8192)
-      read += buf.bytesize
-      avgs << buf.bytesize
-      print_bar.call if (Time.now - last_check) >= 1 and not avgs.empty?
+      Timeout.timeout(3) do
+        read += buf.bytesize
+        avgs << buf.bytesize
+        print_bar.call if (Time.now - last_check) >= 1 and not avgs.empty?
 
-      begin
-        sock.write_nonblock [read].pack('N')
-      rescue Errno::EWOULDBLOCK
+        begin
+          sock.write_nonblock [read].pack('N')
+        rescue Errno::EWOULDBLOCK
+        end
+
+        fh << buf
+        break if read >= fsize
       end
-
-      fh << buf
-      break if read >= fsize
     end
-  rescue EOFError
+  rescue
     puts "\nERROR! #{File.basename fname} failed to download"
     return false
   end
@@ -350,7 +352,12 @@ if __FILE__ == $0
   # Go through each server
   requests.each do |k, v|
     # Try and connect to the server
-    sock = TCPSocket.open(k, 6667)
+    sock = nil
+    begin
+      Timeout.timeout(5) { sock = TCPSocket.open(k, 6667) }
+    rescue
+      abort "! ERROR: Failed to connect to \"#{k}\""
+    end
     cur_req, max_req, x, last_chan = -1, v.length, v[0], ""
 
     # Message thread, to avoid blocking
@@ -387,7 +394,7 @@ if __FILE__ == $0
         # XDCC bot's client doesn't support DCC RESUME, start from beginning
         if $xdcc_sent and $xdcc_no_accept
           puts "Connecting to: #{x.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
-          dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
+           exit unless dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
         end
       end
     end
@@ -476,7 +483,7 @@ if __FILE__ == $0
               # It's a new download, start from beginning
               Thread.new do
                 puts "Connecting to: #{x.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
-                dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
+                exit unless dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
               end
             elsif $xdcc_accept and $xdcc_ret != nil and not $xdcc_no_accept and msg =~ /^\001DCC ACCEPT (.*) (.*) (.*)$/
               # DCC RESUME request accepted, continue the download!
@@ -486,7 +493,7 @@ if __FILE__ == $0
 
               Thread.new do
                 puts "Connecting to: #{x.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
-                dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize, File.stat($xdcc_ret.fname).size
+                exit unless dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize, File.stat($xdcc_ret.fname).size
               end
             else
               puts "! ERROR: #{msg}"
