@@ -104,7 +104,7 @@ def time_distance t
 end
 
 def time_elapsed t
-  return "1 second" if t <= 0
+  return "instantly!" if t <= 0
 
   suffix = [ "seconds", "minutes", "hours", "days", "months", "years" ];
   ta = Time.at(t).gmtime.strftime('%S|%M|%H|%-d|%-m|%Y').split('|', 6).collect { |i| i.to_i }
