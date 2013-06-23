@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 %w(socket thread slop).each { |r| require r }
 
-version = "1.1.5"
+version = "1.1.6"
 config = {}
 out_dir = "./"
 ident_sent = motd_end = nick_sent = nick_check = nick_valid = false
@@ -79,12 +79,68 @@ def safe_fname fname
   end
 end
 
+def time_distance t
+  if t < 60
+    case t
+    when 0      then "- nevermind, done!"
+    when 1..4   then "in a moment!"
+    when 5..9   then "less than 10 seconds"
+    when 10..19 then "less than 20 seconds"
+    when 20..39 then "half a minute"
+    else "less than a minute"
+    end
+  else
+    t = t / 60.0
+    case t.to_i
+    when 1            then "about a minute"
+    when 2..45        then "#{t.round} minutes"
+    when 45..90       then "about an hour"
+    when 91..1440     then "about #{(t / 60.0).round} hours"
+    when 1441..2520   then "about a day"
+    when 2521..86400  then "about #{(t / 1440.0).round} days"
+    else "about #{(t/ 43200.0).round} months"
+    end
+  end
+end
+
+def time_elapsed t
+  return "1 second" if t <= 0
+
+  suffix = [ "seconds", "minutes", "hours", "days", "months", "years" ];
+  ta = Time.at(t).gmtime.strftime('%S|%M|%H|%-d|%-m|%Y').split('|', 6).collect { |i| i.to_i }
+  ta[-1] -= 1970 # fuck the police
+  ta[-2] -= 1    # fuck, fuck
+  ta[-3] -= 1    # fuck the police
+
+  i = 0
+  ta.reverse.each do |x|
+    break if x != 0
+    i += 1
+  end
+
+  plural     = ->(x, y) { x == 1 ? y[0..-2] : y }
+  format_str = ->(x)    { "#{ta[x]} #{plural[ta[x], suffix[x]]}, " }
+
+  ta = ta.take(ta.length - i)
+  str = ""
+  (ta.length - 1).downto(0) { |x| str += format_str[x] }
+  "in #{str[0..-3]}"
+end
+
+p time_elapsed 10
+p time_elapsed 243
+p time_elapsed 40342
+p time_elapsed 3424
+p time_elapsed 42342
+p time_elapsed 12312312
+exit
+
 def dcc_download ip, port, fname, fsize, read = 0
   fh   = File.open fname, (read == 0 ? "w" : "a") # Write or append
   sock = TCPSocket.new ip, port
 
   fsize_clean = bytes_to_closest fsize
-  avgs, last_check = [], Time.now - 2
+  avgs, last_check, start_time = [], Time.now - 2, Time.now
 
   print_bar = ->() {
     print "\r\e[0K> [ "
@@ -93,7 +149,8 @@ def dcc_download ip, port, fname, fsize, read = 0
     bars.times { print "#" }
     (10 - bars).times { print " " }
     avg = avgs.average * 1024.0
-    time_rem = Time.at((fsize - read) / avg).gmtime.strftime('%Hh %Mm %Ss')
+    #time_rem = Time.at(((fsize - read) / avg) * 8).gmtime.strftime('%Hh %Mm %Ss')
+    time_rem = time_distance ((fsize - read) / avg) * 8
     print " ] #{pc.round(2)}% #{bytes_to_closest read}/#{fsize_clean} @ #{bytes_to_closest avg}/s in #{time_rem}"
 
     last_check = Time.now
@@ -115,10 +172,11 @@ def dcc_download ip, port, fname, fsize, read = 0
       break if read >= fsize
     end
   rescue EOFError
-    puts " - FAILED: #{File.basename fname} unsuccessful"
+    puts "\nERROR! #{File.basename fname} failed to download"
     return false
   end
   print_bar.call unless avgs.empty?
+  elapsed_time = time_elapsed (Time.now - start_time).to_i
 
   sock.close
   fh.close
@@ -127,7 +185,7 @@ def dcc_download ip, port, fname, fsize, read = 0
   $xdcc_accept = $xdcc_no_accept = false
   $xdcc_accept_time = $xdcc_ret = nil
 
-  puts " - SUCCESS: #{File.basename fname} downloaded"
+  puts "\nSUCCESS: downloaded #{File.basename fname} in #{elapsed_time}"
   return true
 end
 
@@ -407,6 +465,7 @@ if __FILE__ == $0
               port      =  $3.to_i
               fsize     =  $4.to_i
               fname     =  $1 if fname =~ /^"(.*)"$/
+              puts "Preparing to download: #{fname}"
               fname     = (out_dir.dup << fname)
               $xdcc_ret = XDCC_SEND.new fname, fsize, ip, port
 
@@ -418,6 +477,7 @@ if __FILE__ == $0
                 print "! Incomplete file detected. Attempting to resume..."
                 next # Skip and wait for "DCC ACCEPT"
               elsif File.exists? $xdcc_ret.fname
+                puts "! Warning: File already existing, using a safe name..."
                 $xdcc_ret.fname = safe_fname $xdcc_ret.fname
               end
 

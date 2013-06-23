@@ -26,11 +26,6 @@ You may also benefit from making a config file, see .xget.conf for a simple<br/>
 example config. You can alternativly pass them in arguments, see --help.
 By default, config files are read from "~/.xget.conf"
 
-## To-do
-
-1. Change transfer speed to [K/M]iB/s instead of MB/s
-2. Make remaining transfer time more accurate
-
 ## License
 
 <pre>
