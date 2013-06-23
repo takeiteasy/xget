@@ -127,14 +127,6 @@ def time_elapsed t
   "in #{str[0..-3]}"
 end
 
-p time_elapsed 10
-p time_elapsed 243
-p time_elapsed 40342
-p time_elapsed 3424
-p time_elapsed 42342
-p time_elapsed 12312312
-exit
-
 def dcc_download ip, port, fname, fsize, read = 0
   fh   = File.open fname, (read == 0 ? "w" : "a") # Write or append
   sock = TCPSocket.new ip, port
