@@ -149,7 +149,7 @@ def dcc_download ip, port, fname, fsize, read = 0
     bars = (pc / 10).to_i
     bars.times { print "#" }
     (10 - bars).times { print " " }
-    avg = avgs.average * 1024.0
+    avg = (avgs.average * 1024.0)
     time_rem = time_distance ((fsize - read) / avg) * 8
     print " ] #{pc.round(2)}% #{bytes_to_closest read}/#{fsize_clean} @ #{bytes_to_closest avg}/s in #{time_rem}"
 
