@@ -293,7 +293,7 @@ if __FILE__ == $0
   # Parse to_check array for valid XDCC links, irc.serv.org/#chan/bot/pack
   tmp_requests, tmp_range = [], []
   to_check.each do |x|
-    if x =~ /^(\w+?).(\w+?).(\w+?)\/#(\w+?)\/(.*)\/(.*)$/
+    if x =~ /^(\w+?).(\w+?).(\w+?)\/#(.*)\/(.*)\/(.*)$/
       serv = [$1, $2, $3].join(".")
       info = (config.has_key?(serv) ? serv : "*")
       chan = "##{$4}"
