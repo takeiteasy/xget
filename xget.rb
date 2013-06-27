@@ -159,10 +159,10 @@ def dcc_download ip, port, fname, fsize, read = 0
 
   begin
     while buf = sock.readpartial(8192)
-      Timeout.timeout(3) do
+      Timeout.timeout(5) do
         read += buf.bytesize
         avgs << buf.bytesize
-        print_bar.call if (Time.now - last_check) >= 1 and not avgs.empty?
+        print_bar.call if (Time.now - last_check) > 1 and not avgs.empty?
 
         begin
           sock.write_nonblock [read].pack('N')
