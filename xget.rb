@@ -1,10 +1,16 @@
 #!/usr/bin/env ruby
 %w(socket thread slop timeout).each { |r| require r }
 
-version_maj = 1
-version_min = 2
-version_rev = 0
-version = "#{version_maj}.#{version_min}.#{version_rev}"
+begin
+  require 'Win32/Console/ANSI' if RbConfig::CONFIG['host_os'] =~ /mswin|mingw|cygwin/
+rescue LoadError => e
+  raise 'Please install the win32console gem\nrun: gem install win32console'
+end
+
+ver_maj = 1
+ver_min = 2
+ver_rev = 1
+ver_str = "#{ver_maj}.#{ver_min}.#{ver_rev}"
 
 config = {}
 out_dir = "./"
@@ -57,6 +63,14 @@ class Array
   def average
     inject(:+) / count
   end
+end
+
+def puts_error msg
+  puts "! \e[31mERROR\e[0m: #{msg}"
+end
+
+def puts_warning msg
+  puts "! \e[33mWARNING:\e[0m: #{msg}"
 end
 
 def bytes_to_closest bytes
@@ -163,14 +177,14 @@ def dcc_download ip, port, fname, fsize, read = 0
 
   # Form the status bar
   print_bar = ->() {
-    print "\r\e[0K> [ "
+    print "\r\e[0K> [ \e[1;37m"
     pc = read.to_f / fsize.to_f * 100.0
     bars = (pc / 10).to_i
     bars.times { print "#" }
     (10 - bars).times { print " " }
     avg = avgs.average * 1024.0
     time_rem = time_distance ((fsize - read) / avg) * 8.0
-    print " ] #{pc.round(2)}% #{bytes_to_closest read}/#{fsize_clean} @ #{bytes_to_closest avg}/s in #{time_rem}"
+    print "\e[0m ] #{pc.round(2)}% #{bytes_to_closest read}/#{fsize_clean} \e[1;37m@\e[0m #{bytes_to_closest avg}/s \e[1;37min\e[0m #{time_rem}"
 
     last_check = Time.now
     avgs.clear
@@ -185,7 +199,7 @@ def dcc_download ip, port, fname, fsize, read = 0
       sock.write_nonblock [read].pack('N')
     rescue Errno::EWOULDBLOCK
     rescue Errno::EAGAIN => e
-      puts "! ERROR: #{File.basename fname} timed out! #{e}"
+      puts_error "#{File.basename fname} timed out! #{e}"
       return false
     end
 
@@ -203,7 +217,7 @@ def dcc_download ip, port, fname, fsize, read = 0
   $xdcc_accept = $xdcc_no_accept = false
   $xdcc_accept_time = $xdcc_ret = nil
 
-  puts "\n! SUCCESS: downloaded #{File.basename fname} #{elapsed_time}"
+  puts "\n! \e[1;32mSUCCESS\e[0m: downloaded #{File.basename fname} #{elapsed_time}"
   return true
 rescue EOFError, SocketError => e
   puts "\n! ERROR: #{File.basename fname} failed to download! #{e}"
@@ -216,7 +230,7 @@ if __FILE__ == $0
     on :help, :ignore_case => true
 
     on 'v', 'version', 'Print version' do
-      puts "xget: version #{version}"
+      puts "#{$0}: v#{ver_str}"
       exit
     end
 
@@ -329,7 +343,7 @@ if __FILE__ == $0
                $1.to_i
              when /^(\d+?)..(\d+?)$/ # Pack range from x to y
                if $1 > $2 or $1 == $2
-                 puts "! ERROR: Invalid range #{$1} to #{$2} in \"#{x}\""
+                 puts_error "Invalid range #{$1} to #{$2} in \"#{x}\""
                  next
                end
 
@@ -337,7 +351,7 @@ if __FILE__ == $0
                tmp_range =* ($1.to_i + 1)..$2.to_i
                $1.to_i
              else
-               puts "! ERROR: Invalid pack ID in \"#{x}\""
+               puts_error "Invalid pack ID in \"#{x}\""
                next
              end
       tmp_requests.push XDCC_REQ.new serv, chan, bot, pack, info
@@ -379,7 +393,7 @@ if __FILE__ == $0
 
   # Sort requests by pack
   requests.each do |k,v|
-    puts "#{k} ->"
+    puts "#{k} \e[1;37m->\e[0m"
     v = v.sort_by { |x| [x.chan, x.pack] }.each { |x| puts "\t#{x}" }
   end
   puts
@@ -449,17 +463,18 @@ if __FILE__ == $0
         when "NOTICE"
           if not ident_sent
             if chan == "AUTH"
-              if msg =~ /Checking Ident/i
+              case msg
+              when /Checking Ident/i
                 puts "! Sending ident..."
                 sock.puts "PASS #{config[x.info][:pass]}"
                 sock.puts "NICK #{config[x.info][:nick]}"
                 sock.puts "USER #{config[x.info][:user]} 0 * #{config[x.info][:realname]}"
                 ident_sent = true
-              elsif msg =~ /No Ident response/i or msg =~ /Erroneous Nickname/i
-                puts "! ERROR: Ident failed"
+              when /No Ident response/i, /Erroneous Nickname/i
+                puts_error "Ident failed"
                 sock.puts 'QUIT'
               end
-              puts "> #{msg}"
+              puts "> \e[1;32m#{msg}\e[0m"
             end
           else
             if nick =~ /^NickServ!(.*)$/
@@ -467,27 +482,25 @@ if __FILE__ == $0
                 sock.puts "PRIVMSG NickServ :IDENTIFY #{config[x.info][:nickserv]}"
                 nick_sent = true
               elsif nick_sent and not nick_check
-                if msg =~ /Password incorrect/i
+                case msg
+                when /Password incorrect/i
                   nick_valid = false
                   nick_check = true
-                elsif msg =~ /Password accepted/i
+                when /Password accepted/i
                   nick_valid = true
                   nick_check = true
                 end
               end
-              puts "> #{msg}"
+              puts "> \e[1;33m#{msg}\e[0m"
             elsif nick =~ /^#{Regexp.escape x.bot}!(.*)$/i
-              if msg =~ /already requested that pack/i
-                puts "! ERROR: #{msg}"
+              case msg
+              when /already requested that pack/i, /closing connection/i
+                puts_error "#{msg} - exiting"
                 sock.puts "PRIVMSG #{x.bot} :XDCC CANCEL"
                 sock.puts 'QUIT'
-              elsif msg =~ /you have a dcc pending/i
-                puts "! ERROR: #{msg} - cancelling pending"
+              when /you have a dcc pending/i
+                puts_error "#{msg} - cancelling pending"
                 sock.puts "PRIVMSG #{x.bot} :XDCC CANCEL"
-              elsif msg =~ /closing connection/i
-                puts "! ERROR: #{msg} - exiting"
-                sock.puts "PRIVMSG #{x.bot} :XDCC CANCEL"
-                sock.puts 'QUIT'
               else
                 puts "! #{nick}: #{msg}"
               end
@@ -501,7 +514,7 @@ if __FILE__ == $0
               port      =  $3.to_i
               fsize     =  $4.to_i
               fname     =  $1 if fname =~ /^"(.*)"$/
-              puts "Preparing to download: #{fname}"
+              puts "Preparing to download: \e[36m#{fname}\e[0m"
               fname     = (out_dir.dup << fname)
               $xdcc_ret = XDCC_SEND.new fname, fsize, ip, port
 
@@ -514,7 +527,7 @@ if __FILE__ == $0
                 next # Skip and wait for "DCC ACCEPT"
               elsif File.exists? $xdcc_ret.fname
                 if skip_existing
-                  puts "! Warning: File already exists, skipping..."
+                  puts_warning "File already exists, skipping..."
                   sock.puts "PRIVMSG #{x.bot} :XDCC CANCEL"
 
                   $xdcc_sent = false
@@ -522,7 +535,7 @@ if __FILE__ == $0
                   $xdcc_accept_time = $xdcc_ret = nil
                   next
                 else
-                  puts "! Warning: File already existing, using a safe name..."
+                  puts_warnings "File already existing, using a safe name..."
                   $xdcc_ret.fname = safe_fname $xdcc_ret.fname
                 end
               end
@@ -536,15 +549,15 @@ if __FILE__ == $0
               # DCC RESUME request accepted, continue the download!
               $xdcc_accept_time = nil
               $xdcc_accept = false
-              puts "SUCCESS!"
+              puts "\e[1;32mSUCCESS\e[0m!"
 
               Thread.new do
                 puts "Connecting to: #{x.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
                 exit unless dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize, File.stat($xdcc_ret.fname).size
               end
             else
-              msg.sub!(/#{Regexp.escape config[x.info][:nick]}/, "\e[31m#{config[x.info][:nick]}\e[0m")
-              puts "! ERROR: #{msg}"
+              msg.sub!(/#{Regexp.escape config[x.info][:nick]}/, "\e[34m#{config[x.info][:nick]}\e[0m")
+              puts_error "#{msg}"
               sock.puts 'QUIT'
             end
           end
@@ -552,13 +565,13 @@ if __FILE__ == $0
           type_i = type.to_i
           case type_i
           when 1 # Print welcome message, because it's nice
-            msg.sub!(/#{Regexp.escape config[x.info][:nick]}/, "\e[31m#{config[x.info][:nick]}\e[0m")
+            msg.sub!(/#{Regexp.escape config[x.info][:nick]}/, "\e[34m#{config[x.info][:nick]}\e[0m")
             puts "! #{msg}"
           when 376 # Mark the end of the MOTD
             motd_end = true
           when 400..533 # Handle errors, except 439
             next if not ident_sent or type_i == 439 # Skip 439
-            puts "! ERROR: #{msg}"
+            puts_error "#{msg}"
             sock.puts 'QUIT'
           end
         end
