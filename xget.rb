@@ -1,7 +1,11 @@
 #!/usr/bin/env ruby
 %w(socket thread slop timeout).each { |r| require r }
 
-version = "1.1.9"
+version_maj = 1
+version_min = 2
+version_rev = 0
+version = "#{version_maj}.#{version_min}.#{version_rev}"
+
 config = {}
 out_dir = "./"
 ident_sent = motd_end = nick_sent = nick_check = nick_valid = false
@@ -151,8 +155,6 @@ def time_elapsed t
 end
 
 def dcc_download ip, port, fname, fsize, read = 0
-  fh   = File.open fname, (read == 0 ? "w" : "a") # Write or append
-
   sock = nil
   begin
     Timeout::timeout(10) { sock = TCPSocket.new ip, port }
@@ -163,8 +165,16 @@ def dcc_download ip, port, fname, fsize, read = 0
   end
   abort "! ERROR: Failed to connect to \"#{ip}:#{port}\": #{e}" if sock.nil?
 
+  begin
+    ready = IO.select([sock], nil, [sock], 3)
+    raise Timeout::Error unless ready
+  rescue IOError, Timeout::Error => e
+    abort "! ERROR: Connect to #{ip}:#{port} timed out! #{e}"
+  end
+
   fsize_clean = bytes_to_closest fsize
   avgs, last_check, start_time = [], Time.now - 2, Time.now
+  fh = File.open fname, (read == 0 ? "w" : "a") # Write or append
 
   # Form the status bar
   print_bar = ->() {
@@ -182,13 +192,6 @@ def dcc_download ip, port, fname, fsize, read = 0
   }
 
   while buf = sock.readpartial(8192)
-    begin
-      ready = IO.select([sock], nil, [sock], 3)
-      raise Timeout::Error unless ready
-    rescue IOError => e
-      abort "! ERROR: Connect to #{ip}:#{port} timed out! #{e}"
-    end
-
     read += buf.bytesize
     avgs << buf.bytesize
     print_bar[] if (Time.now - last_check) > 1 and not avgs.empty?
@@ -196,7 +199,7 @@ def dcc_download ip, port, fname, fsize, read = 0
     begin
       sock.write_nonblock [read].pack('N')
     rescue Errno::EWOULDBLOCK
-    rescue Errno::EAGAIN, Timeout::Error => e
+    rescue Errno::EAGAIN => e
       puts "! ERROR: #{File.basename fname} timed out! #{e}"
       return false
     end
