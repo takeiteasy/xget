@@ -59,28 +59,12 @@ class Array
   end
 end
 
-# Get closest relative size from bytes size
 def bytes_to_closest bytes
-  # This is actually slower than the old while loop
-  # fsize_arr = [ 'B', 'KB', 'MB', 'GB', 'TB' ]
-  # exp       = (Math.log(bytes) / Math.log(1024)).to_i
-  # exp       = fsize_arr.length if exp > fsize_arr.length
-  # bytes    /= 1024.0 ** exp
-  # return "#{bytes.round(2)}#{fsize_arr[exp]}"
-
   fsize_arr = [ 'B', 'KB', 'MB', 'GB', 'TB' ]
-  symbol_id = 0
-
-  while symbol_id < fsize_arr.length
-    tmp = bytes / 1024.0
-    if tmp < 1
-      return "#{bytes.round(2).to_s}#{fsize_arr[symbol_id]}"
-    else
-      bytes = tmp
-      symbol_id += 1
-    end
-  end
-  "#{(bytes * 1024.0).round(2).to_s}#{fsize_arr[symbol_id - 1]}"
+  exp       = (Math.log(bytes) / Math.log(1024)).to_i
+  exp       = fsize_arr.length if exp > fsize_arr.length
+  bytes    /= 1024.0 ** exp
+  return "#{bytes.round(2)}#{fsize_arr[exp]}"
 end
 
 # Loop until there is no file with the same name
