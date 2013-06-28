@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-%w(socket thread slop sane_timeout).each { |r| require r }
+%w(socket thread slop).each { |r| require r }
 
 version = "1.1.7"
 config = {}
@@ -153,6 +153,13 @@ end
 def dcc_download ip, port, fname, fsize, read = 0
   fh   = File.open fname, (read == 0 ? "w" : "a") # Write or append
   sock = TCPSocket.new ip, port
+
+  #addr = Socket.getaddrinfo ip, nil
+  #sock = Socket.new (Socket.const_get addr[0][0], Socket::SOCK_STREAM, 0)
+  #timeout = [5, 0].pack("l_2")
+  #sock.setsockopt Socket::SOL_SOCKET, Socket::SO_RCVTIMEO, timeout
+  #sock.setsockopt Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, timeout
+  #sock.connect (Socket.pack_sockaddr_in port, addr[0][3])
 
   fsize_clean = bytes_to_closest fsize
   avgs, last_check, start_time = [], Time.now - 2, Time.now
@@ -373,7 +380,7 @@ if __FILE__ == $0
     # Try and connect to the server
     sock = nil
     begin
-      Timeout.timeout(5) { sock = TCPSocket.open(k, 6667) }
+      sock = TCPSocket.open(k, 6667)
     rescue
       abort "! ERROR: Failed to connect to \"#{k}\""
     end
