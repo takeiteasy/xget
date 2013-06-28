@@ -8,6 +8,7 @@ version = "#{version_maj}.#{version_min}.#{version_rev}"
 
 config = {}
 out_dir = "./"
+skip_existing = false
 ident_sent = motd_end = nick_sent = nick_check = nick_valid = false
 
 $xdcc_sent = $xdcc_accept = $xdcc_no_accept = false
@@ -212,12 +213,13 @@ def dcc_download ip, port, fname, fsize, read = 0
 
   sock.close
   fh.close
+  ready = nil
 
   $xdcc_sent = false
   $xdcc_accept = $xdcc_no_accept = false
   $xdcc_accept_time = $xdcc_ret = nil
 
-  puts "\n! SUCCESS: downloaded #{File.basename fname} in #{elapsed_time}"
+  puts "\n! SUCCESS: downloaded #{File.basename fname} #{elapsed_time}"
   return true
 rescue EOFError, SocketError => e
   puts "\n! ERROR: #{File.basename fname} failed to download! #{e}"
@@ -234,14 +236,15 @@ if __FILE__ == $0
       exit
     end
 
-    on 'config=',   'Config file location'
-    on 'user=',     'IRC \'USER\' for Ident'
-    on 'nick=',     'IRC nick'
-    on 'pass=',     'IRC \'PASS\' for Ident'
-    on 'realname=', 'Realname for \'USER\' Ident'
-    on 'nickserv=', 'Password for Nickserv'
-    on 'files=',    'Pass list of files to parse for links', as: Array, delimiter: ':'
-    on 'out=',      'Output directory to save fiels to', :default => "./"
+    on 'config=',      'Config file location'
+    on 'user=',        'IRC \'USER\' for Ident'
+    on 'nick=',        'IRC nick'
+    on 'pass=',        'IRC \'PASS\' for Ident'
+    on 'realname=',    'Realname for \'USER\' Ident'
+    on 'nickserv=',    'Password for Nickserv'
+    on 'files=',       'Pass list of files to parse for links', as: Array, delimiter: ':'
+    on 'out=',         'Output directory to save fiels to', :default => "./"
+    on 'skip-existing' 'Don\' download files that already exist', :default => false
   end
 
   if opts.help?
@@ -291,14 +294,20 @@ if __FILE__ == $0
 
       # Set current block to the new header
       config[cur_block] = {} unless config.has_key? cur_block
-    elsif line =~ /^(\w+?)=(.*)$/
+    elsif line =~ /^((?:[a-zA-Z0-9-]*))=(.*)$/
       # Check if current line is specifying out directory
-      if $1 == "out"
+      case $1
+      when "out"
         t_out_dir = File.expand_path $2
         abort "! ERROR: Out directory, \"#{t_out_dir}\" doesn't exist!" unless Dir.exists? t_out_dir
         out_dir = t_out_dir
         out_dir << "/" unless out_dir[-1] == "/"
         next
+      when "skip-existing"
+        skip_existing = case $2.downcase
+                        when "true" then true
+                        else false
+                        end
       end
 
       # Add value to current header, default is *
@@ -358,6 +367,7 @@ if __FILE__ == $0
       abort "! ERROR: #{x} is not a valid XDCC address\n         XDCC Address format: irc.serv.com/#chan/bot/pack"
     end
   end
+
 
   # Remove duplicate entries from requests
   i = j = 0
@@ -485,14 +495,14 @@ if __FILE__ == $0
             elsif nick =~ /^#{Regexp.escape x.bot}!(.*)$/i
               if msg =~ /already requested that pack/i
                 puts "! ERROR: #{msg}"
-                sock.puts "PRIVMSG #{x.bot} :XDCC cancel"
+                sock.puts "PRIVMSG #{x.bot} :XDCC CANCEL"
                 sock.puts 'QUIT'
               elsif msg =~ /you have a dcc pending/i
                 puts "! ERROR: #{msg} - cancelling pending"
-                sock.puts "PRIVMSG #{x.bot} :xdcc cancel"
+                sock.puts "PRIVMSG #{x.bot} :XDCC CANCEL"
               elsif msg =~ /closing connection/i
                 puts "! ERROR: #{msg} - exiting"
-                sock.puts "PRIVMSG #{x.bot} :xdcc cancel"
+                sock.puts "PRIVMSG #{x.bot} :XDCC CANCEL"
                 sock.puts 'QUIT'
               else
                 puts "! #{nick}: #{msg}"
@@ -519,8 +529,18 @@ if __FILE__ == $0
                 print "! Incomplete file detected. Attempting to resume..."
                 next # Skip and wait for "DCC ACCEPT"
               elsif File.exists? $xdcc_ret.fname
-                puts "! Warning: File already existing, using a safe name..."
-                $xdcc_ret.fname = safe_fname $xdcc_ret.fname
+                if skip_existing
+                  puts "! Warning: File already exists, skipping..."
+                  sock.puts "PRIVMSG #{x.bot} :XDCC CANCEL"
+
+                  $xdcc_sent = false
+                  $xdcc_accept = $xdcc_no_accept = false
+                  $xdcc_accept_time = $xdcc_ret = nil
+                  next
+                else
+                  puts "! Warning: File already existing, using a safe name..."
+                  $xdcc_ret.fname = safe_fname $xdcc_ret.fname
+                end
               end
 
               # It's a new download, start from beginning
@@ -539,6 +559,7 @@ if __FILE__ == $0
                 exit unless dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize, File.stat($xdcc_ret.fname).size
               end
             else
+              msg.sub!(/#{Regexp.escape config[x.info][:nick]}/, "\e[31m#{config[x.info][:nick]}\e[0m")
               puts "! ERROR: #{msg}"
               sock.puts 'QUIT'
             end
@@ -547,6 +568,7 @@ if __FILE__ == $0
           type_i = type.to_i
           case type_i
           when 1 # Print welcome message, because it's nice
+            msg.sub!(/#{Regexp.escape config[x.info][:nick]}/, "\e[31m#{config[x.info][:nick]}\e[0m")
             puts "! #{msg}"
           when 376 # Mark the end of the MOTD
             motd_end = true
