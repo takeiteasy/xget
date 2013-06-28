@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-%w(socket thread slop timeout).each { |r| require r }
+%w(socket thread slop sane_timeout).each { |r| require r }
 
 version = "1.1.7"
 config = {}
@@ -56,11 +56,26 @@ end
 
 # Get closest relative size from bytes size
 def bytes_to_closest bytes
+  # This is actually slower than the old while loop
+  # fsize_arr = [ 'B', 'KB', 'MB', 'GB', 'TB' ]
+  # exp       = (Math.log(bytes) / Math.log(1024)).to_i
+  # exp       = fsize_arr.length if exp > fsize_arr.length
+  # bytes    /= 1024.0 ** exp
+  # return "#{bytes.round(2)}#{fsize_arr[exp]}"
+
   fsize_arr = [ 'B', 'KB', 'MB', 'GB', 'TB' ]
-  exp       = (Math.log(bytes) / Math.log(1024)).to_i
-  exp       = fsize_arr.length if exp > fsize_arr.length
-  bytes    /= 1024.0 ** exp
-  return "#{bytes.round(2)}#{fsize_arr[exp]}"
+  symbol_id = 0
+
+  while symbol_id < fsize_arr.length
+    tmp = bytes / 1024.0
+    if tmp < 1
+      return "#{bytes.round(2).to_s}#{fsize_arr[symbol_id]}"
+    else
+      bytes = tmp
+      symbol_id += 1
+    end
+  end
+  "#{(bytes * 1024.0).round(2).to_s}#{fsize_arr[symbol_id - 1]}"
 end
 
 # Loop until there is no file with the same name
@@ -149,33 +164,26 @@ def dcc_download ip, port, fname, fsize, read = 0
     bars = (pc / 10).to_i
     bars.times { print "#" }
     (10 - bars).times { print " " }
-    avg = (avgs.average * 1024.0)
-    time_rem = time_distance ((fsize - read) / avg) * 8
+    avg = avgs.average * 1024.0
+    time_rem = time_distance ((fsize - read) / avg) * 8.0
     print " ] #{pc.round(2)}% #{bytes_to_closest read}/#{fsize_clean} @ #{bytes_to_closest avg}/s in #{time_rem}"
 
     last_check = Time.now
     avgs.clear
   }
 
-  begin
-    while buf = sock.readpartial(8192)
-      Timeout.timeout(5) do
-        read += buf.bytesize
-        avgs << buf.bytesize
-        print_bar.call if (Time.now - last_check) > 1 and not avgs.empty?
+  while buf = sock.readpartial(8192)
+    read += buf.bytesize
+    avgs << buf.bytesize
+    print_bar[] if (Time.now - last_check) > 1 and not avgs.empty?
 
-        begin
-          sock.write_nonblock [read].pack('N')
-        rescue Errno::EWOULDBLOCK
-        end
-
-        fh << buf
-        break if read >= fsize
-      end
+    begin
+      sock.write_nonblock [read].pack('N')
+    rescue Errno::EWOULDBLOCK
     end
-  rescue
-    puts "\nERROR! #{File.basename fname} failed to download"
-    return false
+
+    fh << buf
+    break if read >= fsize
   end
   print_bar.call unless avgs.empty?
   elapsed_time = time_elapsed (Time.now - start_time).to_i
@@ -187,8 +195,11 @@ def dcc_download ip, port, fname, fsize, read = 0
   $xdcc_accept = $xdcc_no_accept = false
   $xdcc_accept_time = $xdcc_ret = nil
 
-  puts "\nSUCCESS: downloaded #{File.basename fname} in #{elapsed_time}"
+  puts "\n! SUCCESS: downloaded #{File.basename fname} in #{elapsed_time}"
   return true
+rescue EOFError => e
+  puts "\n! ERROR: #{File.basename fname} failed to download! #{e}"
+  return false
 end
 
 if __FILE__ == $0
@@ -402,7 +413,7 @@ if __FILE__ == $0
         # XDCC bot's client doesn't support DCC RESUME, start from beginning
         if $xdcc_sent and $xdcc_no_accept
           puts "Connecting to: #{x.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
-           exit unless dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
+          exit unless dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
         end
       end
     end
