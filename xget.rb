@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
-%w(socket thread slop).each { |r| require r }
+%w(socket thread slop timeout).each { |r| require r }
 
-version = "1.1.7"
+version = "1.1.9"
 config = {}
 out_dir = "./"
 ident_sent = motd_end = nick_sent = nick_check = nick_valid = false
@@ -152,14 +152,16 @@ end
 
 def dcc_download ip, port, fname, fsize, read = 0
   fh   = File.open fname, (read == 0 ? "w" : "a") # Write or append
-  sock = TCPSocket.new ip, port
 
-  #addr = Socket.getaddrinfo ip, nil
-  #sock = Socket.new (Socket.const_get addr[0][0], Socket::SOCK_STREAM, 0)
-  #timeout = [5, 0].pack("l_2")
-  #sock.setsockopt Socket::SOL_SOCKET, Socket::SO_RCVTIMEO, timeout
-  #sock.setsockopt Socket::SOL_SOCKET, Socket::SO_SNDTIMEO, timeout
-  #sock.connect (Socket.pack_sockaddr_in port, addr[0][3])
+  sock = nil
+  begin
+    Timeout::timeout(10) { sock = TCPSocket.new ip, port }
+  rescue SocketError => e
+    abort "! ERROR: Failed to connect to \"#{ip}:#{port}\": #{e}"
+  rescue Timeout::Error => e
+    abort "! ERROR: Connect to #{ip}:#{port} timed out! #{e}"
+  end
+  abort "! ERROR: Failed to connect to \"#{ip}:#{port}\": #{e}" if sock.nil?
 
   fsize_clean = bytes_to_closest fsize
   avgs, last_check, start_time = [], Time.now - 2, Time.now
@@ -180,6 +182,13 @@ def dcc_download ip, port, fname, fsize, read = 0
   }
 
   while buf = sock.readpartial(8192)
+    begin
+      ready = IO.select([sock], nil, [sock], 3)
+      raise Timeout::Error unless ready
+    rescue IOError => e
+      abort "! ERROR: Connect to #{ip}:#{port} timed out! #{e}"
+    end
+
     read += buf.bytesize
     avgs << buf.bytesize
     print_bar[] if (Time.now - last_check) > 1 and not avgs.empty?
@@ -187,6 +196,9 @@ def dcc_download ip, port, fname, fsize, read = 0
     begin
       sock.write_nonblock [read].pack('N')
     rescue Errno::EWOULDBLOCK
+    rescue Errno::EAGAIN, Timeout::Error => e
+      puts "! ERROR: #{File.basename fname} timed out! #{e}"
+      return false
     end
 
     fh << buf
@@ -204,7 +216,7 @@ def dcc_download ip, port, fname, fsize, read = 0
 
   puts "\n! SUCCESS: downloaded #{File.basename fname} in #{elapsed_time}"
   return true
-rescue EOFError => e
+rescue EOFError, SocketError => e
   puts "\n! ERROR: #{File.basename fname} failed to download! #{e}"
   return false
 end
@@ -380,9 +392,11 @@ if __FILE__ == $0
     # Try and connect to the server
     sock = nil
     begin
-      sock = TCPSocket.open(k, 6667)
-    rescue
-      abort "! ERROR: Failed to connect to \"#{k}\""
+      Timeout::timeout (10) { sock = TCPSocket.new k, 6667 }
+    rescue SocketError => e
+      abort "! ERROR: Failed to connect to \"#{k}\": #{e}"
+    rescue Timeout::Error => e
+      abort "! ERROR: Connect to #{k} timed out! #{e}"
     end
     cur_req, max_req, x, last_chan = -1, v.length, v[0], ""
 
