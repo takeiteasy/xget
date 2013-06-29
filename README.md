@@ -13,10 +13,11 @@ Also, if you have mutiple packages from the same bot in a row, use a range, like
 ## Instructions
 
 Firstly, xget requires the latest version of Ruby, 2.0.0p0, and also Slop for<br/>
-the argument parsing.
+the argument parsing.<br/>
+If you're on Windows, you'll need win32console
 
 <pre>
-gem install Slop
+gem install slop win32console
 </pre>
 
 Then either chmod +x it, or run it through ruby

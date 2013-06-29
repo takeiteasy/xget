@@ -1,10 +1,10 @@
 #!/usr/bin/env ruby
-%w(socket thread slop timeout).each { |r| require r }
 
 begin
+  %w(socket thread slop timeout).each { |r| require r }
   require 'Win32/Console/ANSI' if RbConfig::CONFIG['host_os'] =~ /mswin|mingw|cygwin/
 rescue LoadError => e
-  raise 'Please install the win32console gem\nrun: gem install win32console'
+  raise "#{$0} requires slop and, if you're on Windows, win32console\nPlease run 'gem install slop win32console'"
 end
 
 ver_maj = 1
@@ -67,6 +67,10 @@ end
 
 def puts_error msg
   puts "! \e[31mERROR\e[0m: #{msg}"
+end
+
+def puts_abort msg
+  abort "! \e[31mERROR\e[0m: #{msg}"
 end
 
 def puts_warning msg
@@ -158,17 +162,17 @@ def dcc_download ip, port, fname, fsize, read = 0
   begin
     Timeout::timeout(10) { sock = TCPSocket.new ip, port }
   rescue SocketError => e
-    abort "! ERROR: Failed to connect to \"#{ip}:#{port}\": #{e}"
+    puts_abort "Failed to connect to \"#{ip}:#{port}\": #{e}"
   rescue Timeout::Error => e
-    abort "! ERROR: Connect to #{ip}:#{port} timed out! #{e}"
+    puts_abort "Connect to #{ip}:#{port} timed out! #{e}"
   end
-  abort "! ERROR: Failed to connect to \"#{ip}:#{port}\": #{e}" if sock.nil?
+  puts_abort "Failed to connect to \"#{ip}:#{port}\": #{e}" if sock.nil?
 
   begin
     ready = IO.select([sock], nil, [sock], 3)
     raise Timeout::Error unless ready
   rescue IOError, Timeout::Error => e
-    abort "! ERROR: Connect to #{ip}:#{port} timed out! #{e}"
+    puts_abort "Connect to #{ip}:#{port} timed out! #{e}"
   end
 
   fsize_clean = bytes_to_closest fsize
@@ -224,6 +228,10 @@ rescue EOFError, SocketError => e
   return false
 end
 
+# TODO:
+# Handle: ":irc.lolipower.org 401 bmp THORA|Arutha :No such nick/channel"
+# Handle: If nick is recognised, but isn't a bot (timeout)
+
 if __FILE__ == $0
   opts = Slop.parse! do
     banner " Usage: #{$0} [options] [value] [links] [--files] [file1:file2:file3]\n"
@@ -268,7 +276,7 @@ if __FILE__ == $0
   %w(user nick pass realname nickserv).each { |x| config[cur_block][x.to_sym] = opts[x] unless opts[x].nil? }
 
   # Check if specified output directory actually exists
-  abort "! ERROR: Out directory, \"#{opts["out"]}\" doesn't exist!" unless Dir.exists? opts["out"]
+  puts_abort "Out directory, \"#{opts["out"]}\" doesn't exist!" unless Dir.exists? opts["out"]
   out_dir = opts["out"].dup
   out_dir << "/" unless out_dir[-1] == "/"
 
@@ -297,7 +305,7 @@ if __FILE__ == $0
       case $1
       when "out"
         t_out_dir = File.expand_path $2
-        abort "! ERROR: Out directory, \"#{t_out_dir}\" doesn't exist!" unless Dir.exists? t_out_dir
+        puts_abort "Out directory, \"#{t_out_dir}\" doesn't exist!" unless Dir.exists? t_out_dir
         out_dir = t_out_dir
         out_dir << "/" unless out_dir[-1] == "/"
         next
@@ -362,7 +370,7 @@ if __FILE__ == $0
         tmp_range.clear
       end
     else
-      abort "! ERROR: #{x} is not a valid XDCC address\n         XDCC Address format: irc.serv.com/#chan/bot/pack"
+      puts_abort "#{x} is not a valid XDCC address\n         XDCC Address format: irc.serv.com/#chan/bot/pack"
     end
   end
 
@@ -405,9 +413,9 @@ if __FILE__ == $0
     begin
       Timeout::timeout (10) { sock = TCPSocket.new k, 6667 }
     rescue SocketError => e
-      abort "! ERROR: Failed to connect to \"#{k}\": #{e}"
+      puts_abort "Failed to connect to \"#{k}\": #{e}"
     rescue Timeout::Error => e
-      abort "! ERROR: Connect to #{k} timed out! #{e}"
+      puts_abort "Connect to #{k} timed out! #{e}"
     end
     cur_req, max_req, x, last_chan = -1, v.length, v[0], ""
 
@@ -453,7 +461,7 @@ if __FILE__ == $0
     # H-here w-w-we g-go...
     until sock.eof? do
       full_msg = sock.gets
-      #puts full_msg
+      puts full_msg
 
       if full_msg[0] == ':'
         /^:(?<nick>.*) (?<type>.*) (?<chan>.*) :(?<msg>.*)$/ =~ full_msg
