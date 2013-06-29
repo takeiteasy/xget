@@ -6,6 +6,10 @@ Pass the XDCC server, channel, bot and pack as a sort of link and xget does the 
 Links can be passed either through the arguments, or in a file, which is read line by line.<br/>
 Also, if you have mutiple packages from the same bot in a row, use a range, like x..y<br/>
 
+## Screenshot
+
+...
+
 ## Instructions
 
 Firstly, xget requires the latest version of Ruby, 2.0.0p0, and also Slop for<br/>
