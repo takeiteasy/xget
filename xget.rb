@@ -461,8 +461,6 @@ if __FILE__ == $0
     # H-here w-w-we g-go...
     until sock.eof? do
       full_msg = sock.gets
-      puts full_msg
-
       if full_msg[0] == ':'
         /^:(?<nick>.*) (?<type>.*) (?<chan>.*) :(?<msg>.*)$/ =~ full_msg
         #puts "#{nick} - #{type} - #{chan} - #{msg}"
