@@ -9,7 +9,7 @@ end
 
 ver_maj = 1
 ver_min = 3
-ver_rev = 0
+ver_rev = 1
 ver_str = "#{ver_maj}.#{ver_min}.#{ver_rev}"
 
 config = {}
@@ -305,11 +305,7 @@ if __FILE__ == $0
         out_dir = t_out_dir
         out_dir << "/" unless out_dir[-1] == "/"
         next
-      when "skip-existing"
-        skip_existing = case $2.downcase
-                        when "true" then true
-                        else false
-                        end
+      when "skip-existing" then skip_existing == ($2 == "true")
       else
         # Add value to current header, default is *
         t_sym = $1.downcase.to_sym
