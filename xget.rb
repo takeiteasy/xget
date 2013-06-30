@@ -4,12 +4,12 @@ begin
   %w(socket thread slop timeout).each { |r| require r }
   require 'Win32/Console/ANSI' if RbConfig::CONFIG['host_os'] =~ /mswin|mingw|cygwin/
 rescue LoadError => e
-  raise "#{$0} requires slop and, if you're on Windows, win32console\nPlease run 'gem install slop win32console'"
+  abort "#{$0} requires slop and, if you're on Windows, win32console\nPlease run 'gem install slop win32console'"
 end
 
 ver_maj = 1
-ver_min = 2
-ver_rev = 1
+ver_min = 3
+ver_rev = 0
 ver_str = "#{ver_maj}.#{ver_min}.#{ver_rev}"
 
 config = {}
@@ -228,10 +228,6 @@ rescue EOFError, SocketError => e
   return false
 end
 
-# TODO:
-# Handle: ":irc.lolipower.org 401 bmp THORA|Arutha :No such nick/channel"
-# Handle: If nick is recognised, but isn't a bot (timeout)
-
 if __FILE__ == $0
   opts = Slop.parse! do
     banner " Usage: #{$0} [options] [value] [links] [--files] [file1:file2:file3]\n"
@@ -285,7 +281,7 @@ if __FILE__ == $0
   File.open(config_loc, "r").each_line do |line|
     next if line.length <= 1 or line[0] == '#'
 
-    if line =~ /^\[(.*)\]$/ # Check if header
+    if line =~ /^\[(\S+)\]$/ # Check if header
       cur_block = $1
       if cur_block.include? ',' # Check if header contains more than one server
         tmp_split = cur_block.split(",")
@@ -300,7 +296,7 @@ if __FILE__ == $0
 
       # Set current block to the new header
       config[cur_block] = {} unless config.has_key? cur_block
-    elsif line =~ /^((?:[a-zA-Z0-9-]*))=(.*)$/
+    elsif line =~ /^(\S+)=(.*+?)$/
       # Check if current line is specifying out directory
       case $1
       when "out"
@@ -314,11 +310,11 @@ if __FILE__ == $0
                         when "true" then true
                         else false
                         end
+      else
+        # Add value to current header, default is *
+        t_sym = $1.downcase.to_sym
+        config[cur_block][t_sym] = $2 unless config[cur_block].has_key? t_sym
       end
-
-      # Add value to current header, default is *
-      t_sym = $1.downcase.to_sym
-      config[cur_block][t_sym] = $2 unless config[cur_block].has_key? t_sym
     end
   end
 
@@ -326,7 +322,7 @@ if __FILE__ == $0
   config_copies.each { |k,v| v.each { |x| config[x] = config[k] } } unless config_copies.empty?
 
   # Take remaining arguments and all lines from --files arg and put into array
-  to_check = ARGV
+  to_check = $*
   if opts['files'] != nil and not opts['files'].empty?
     opts['files'].each do |x|
       File.open(x, "r").each_line { |y| to_check << y.chomp } if File.exists? x
@@ -341,27 +337,20 @@ if __FILE__ == $0
   # Parse to_check array for valid XDCC links, irc.serv.org/#chan/bot/pack
   tmp_requests, tmp_range = [], []
   to_check.each do |x|
-    if x =~ /^(\w+?).(\w+?).(\w+?)\/#(.*)\/(.*)\/(.*)$/
+    if x =~ /^(\w+?).(\w+?).(\w+?)\/#(\S+)\/(\S+)\/(\d+)(..\d+)?$/
       serv = [$1, $2, $3].join(".")
       info = (config.has_key?(serv) ? serv : "*")
       chan = "##{$4}"
       bot  = $5
-      pack = case $6
-             when /^(\d+?)$/
-               $1.to_i
-             when /^(\d+?)..(\d+?)$/ # Pack range from x to y
-               if $1 > $2 or $1 == $2
-                 puts_error "Invalid range #{$1} to #{$2} in \"#{x}\""
-                 next
-               end
-
-               # Convert range to array for later
-               tmp_range =* ($1.to_i + 1)..$2.to_i
-               $1.to_i
-             else
-               puts_error "Invalid pack ID in \"#{x}\""
-               next
-             end
+      pack = $6.to_i
+      unless $7.nil?
+        to_range = $7[2..-1].to_i # Clip off the ".."
+        if pack > to_range or pack == to_range
+          puts_error "Invalid range #{pack} to #{to_range} in \"#{x}\""
+          next
+        end
+        tmp_range =* (pack + 1)..to_range
+      end
       tmp_requests.push XDCC_REQ.new serv, chan, bot, pack, info
 
       # Convert range array to new requests
@@ -373,7 +362,6 @@ if __FILE__ == $0
       puts_abort "#{x} is not a valid XDCC address\n         XDCC Address format: irc.serv.com/#chan/bot/pack"
     end
   end
-
 
   # Remove duplicate entries from requests
   i = j = 0
@@ -418,6 +406,7 @@ if __FILE__ == $0
       puts_abort "Connect to #{k} timed out! #{e}"
     end
     cur_req, max_req, x, last_chan = -1, v.length, v[0], ""
+    req_send_time = nil
 
     # Message thread, to avoid blocking
     t = Thread.new do
@@ -439,7 +428,17 @@ if __FILE__ == $0
 
           sleep 1 # Cool off before download
           sock.puts "PRIVMSG #{x.bot} :XDCC SEND #{x.pack}"
+          req_send_time = Time.now
           $xdcc_sent = true
+        end
+
+        # Wait 3 seconds for DCC SEND response, if there isn't one, abort
+        if $xdcc_sent and not req_send_time.nil? and not $xdcc_accept
+          if (Time.now - req_send_time).floor > 3
+            puts_error "#{x.bot} took too long to respond, are you sure it's a bot?"
+            sock.puts 'QUIT'
+            Thread.exit
+          end
         end
 
         # Wait 3 seconds for a DCC ACCEPT response, if there isn't one, don't resume
@@ -460,136 +459,123 @@ if __FILE__ == $0
 
     # H-here w-w-we g-go...
     until sock.eof? do
-      full_msg = sock.gets
-      if full_msg[0] == ':'
-        /^:(?<nick>.*) (?<type>.*) (?<chan>.*) :(?<msg>.*)$/ =~ full_msg
-        #puts "#{nick} - #{type} - #{chan} - #{msg}"
+      /^(?:[:](?<prefix>\S+) )?(?<type>\S+)(?: (?!:)(?<dest>.+?))?(?: [:](?<msg>.+))?$/ =~ sock.gets
+      #puts "#{prefix} | #{type} | #{dest} | #{msg}"
 
-        case type
-        when "NOTICE"
-          if not ident_sent
-            if chan == "AUTH"
-              case msg
-              when /Checking Ident/i
-                puts "! Sending ident..."
-                sock.puts "PASS #{config[x.info][:pass]}"
-                sock.puts "NICK #{config[x.info][:nick]}"
-                sock.puts "USER #{config[x.info][:user]} 0 * #{config[x.info][:realname]}"
-                ident_sent = true
-              when /No Ident response/i, /Erroneous Nickname/i
-                puts_error "Ident failed"
-                sock.puts 'QUIT'
-              end
-              puts "> \e[1;32m#{msg}\e[0m"
-            end
-          else
-            if nick =~ /^NickServ!(.*)$/
-              if not nick_sent and config[x.info][:nickserv] != nil
-                sock.puts "PRIVMSG NickServ :IDENTIFY #{config[x.info][:nickserv]}"
-                nick_sent = true
-              elsif nick_sent and not nick_check
-                case msg
-                when /Password incorrect/i
-                  nick_valid = false
-                  nick_check = true
-                when /Password accepted/i
-                  nick_valid = true
-                  nick_check = true
-                end
-              end
-              puts "> \e[1;33m#{msg}\e[0m"
-            elsif nick =~ /^#{Regexp.escape x.bot}!(.*)$/i
-              case msg
-              when /already requested that pack/i, /closing connection/i
-                puts_error "#{msg} - exiting"
-                sock.puts "PRIVMSG #{x.bot} :XDCC CANCEL"
-                sock.puts 'QUIT'
-              when /you have a dcc pending/i
-                puts_error "#{msg} - cancelling pending"
-                sock.puts "PRIVMSG #{x.bot} :XDCC CANCEL"
-              else
-                puts "! #{nick}: #{msg}"
-              end
-            end
-          end
-        when "PRIVMSG"
-          if $xdcc_sent and nick =~ /^#{Regexp.escape x.bot}!(.*)$/i
-            if msg =~ /^\001DCC SEND (.*) (.*) (.*) (.*)$/
-              tmp_fname = fname = $1
-              ip        = [$2.to_i].pack('N').unpack('C4') * '.'
-              port      =  $3.to_i
-              fsize     =  $4.to_i
-              fname     =  $1 if fname =~ /^"(.*)"$/
-              puts "Preparing to download: \e[36m#{fname}\e[0m"
-              fname     = (out_dir.dup << fname)
-              $xdcc_ret = XDCC_SEND.new fname, fsize, ip, port
-
-              # Check if the for unfinished download amd try to resume
-              if File.exists? $xdcc_ret.fname and File.stat($xdcc_ret.fname).size < $xdcc_ret.fsize
-                sock.puts "PRIVMSG #{x.bot} :\001DCC RESUME #{tmp_fname} #{$xdcc_ret.port} #{File.stat($xdcc_ret.fname).size}\001"
-                $xdcc_accept = true
-                $xdcc_accept_time = Time.now
-                print "! Incomplete file detected. Attempting to resume..."
-                next # Skip and wait for "DCC ACCEPT"
-              elsif File.exists? $xdcc_ret.fname
-                if skip_existing
-                  puts_warning "File already exists, skipping..."
-                  sock.puts "PRIVMSG #{x.bot} :XDCC CANCEL"
-
-                  $xdcc_sent = false
-                  $xdcc_accept = $xdcc_no_accept = false
-                  $xdcc_accept_time = $xdcc_ret = nil
-                  next
-                else
-                  puts_warnings "File already existing, using a safe name..."
-                  $xdcc_ret.fname = safe_fname $xdcc_ret.fname
-                end
-              end
-
-              # It's a new download, start from beginning
-              Thread.new do
-                puts "Connecting to: #{x.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
-                exit unless dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
-              end
-            elsif $xdcc_accept and $xdcc_ret != nil and not $xdcc_no_accept and msg =~ /^\001DCC ACCEPT (.*) (.*) (.*)$/
-              # DCC RESUME request accepted, continue the download!
-              $xdcc_accept_time = nil
-              $xdcc_accept = false
-              puts "\e[1;32mSUCCESS\e[0m!"
-
-              Thread.new do
-                puts "Connecting to: #{x.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
-                exit unless dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize, File.stat($xdcc_ret.fname).size
-              end
-            else
-              msg.sub!(/#{Regexp.escape config[x.info][:nick]}/, "\e[34m#{config[x.info][:nick]}\e[0m")
-              puts_error "#{msg}"
+      case type
+      when "NOTICE"
+        unless ident_sent
+          if dest == "AUTH"
+            case msg
+            when /checking ident/i
+              puts "! Sending login..."
+              sock.puts "PASS #{config[x.info][:pass]}" unless config[x.info][:pass].nil?
+              sock.puts "NICK #{config[x.info][:nick]}"
+              sock.puts "USER #{config[x.info][:user]} 0 * #{config[x.info][:realname]}"
+              ident_sent = true
+            when /no ident response/i, /erroneous nickname/i
+              puts_error "Ident failed"
               sock.puts 'QUIT'
             end
+            puts "> \e[1;32m#{msg}\e[0m"
           end
-        when /^\d+?$/
-          type_i = type.to_i
-          case type_i
-          when 1 # Print welcome message, because it's nice
-            msg.sub!(/#{Regexp.escape config[x.info][:nick]}/, "\e[34m#{config[x.info][:nick]}\e[0m")
-            puts "! #{msg}"
-          when 376 # Mark the end of the MOTD
-            motd_end = true
-          when 400..533 # Handle errors, except 439
-            next if not ident_sent or type_i == 439 # Skip 439
-            puts_error "#{msg}"
+        else
+          if prefix =~ /^NickServ!$/
+            if not nick_sent and config[x.info][:nickserv] != nil
+              sock.puts "PRIVMSG NickServ :IDENTIFY #{config[x.info][:nickserv]}"
+              nick_sent = true
+            elsif nick_sent and not nick_check
+              case msg
+              when /password incorrect/i
+                nick_valid = false
+                nick_check = true
+              when /password accepted/i
+                nick_valid = true
+                nick_check = true
+              end
+            end
+            puts "> \e[1;33m#{msg}\e[0m"
+          elsif prefix =~ /^#{Regexp.escape x.bot}!(.*)$/i
+            case msg
+            when /already requested that pack/i, /closing connection/i, /you have a dcc pending/i, /you can only have (\d+?) transfer at a time/i
+              puts_error msg
+              sock.puts "PRIVMSG #{x.bot} :XDCC CANCEL"
+              sock.puts 'QUIT'
+            else
+              puts "! #{prefix}: #{msg}"
+            end
+          end
+        end
+      when "PRIVMSG"
+        if $xdcc_sent and not $xdcc_accept and prefix =~ /^#{Regexp.escape x.bot}!(.*)$/i
+          /^\001DCC SEND (?<fname>((".*?").*?|(\S+))) (?<ip>\d+) (?<port>\d+) (?<fsize>\d+)\001\015$/ =~ msg
+
+          if $~.nil?
+            puts msg.bytes.to_a
+            puts_error msg
             sock.puts 'QUIT'
           end
+          req_send_time = nil # It's a valid bot
+
+          tmp_fname = fname
+          fname     =  $1 if tmp_fname =~ /^"(.*)"$/
+          puts "Preparing to download: \e[36m#{fname}\e[0m"
+          fname     = (out_dir.dup << fname)
+          $xdcc_ret = XDCC_SEND.new fname, fsize.to_i, [ip.to_i].pack('N').unpack('C4') * '.', port.to_i
+
+          # Check if the for unfinished download amd try to resume
+          if File.exists? $xdcc_ret.fname and File.stat($xdcc_ret.fname).size < $xdcc_ret.fsize
+            sock.puts "PRIVMSG #{x.bot} :\001DCC RESUME #{tmp_fname} #{$xdcc_ret.port} #{File.stat($xdcc_ret.fname).size}\001"
+            $xdcc_accept = true
+            $xdcc_accept_time = Time.now
+            print "! Incomplete file detected. Attempting to resume..."
+            next # Skip and wait for "DCC ACCEPT"
+          elsif File.exists? $xdcc_ret.fname
+            if skip_existing
+              puts_warning "File already exists, skipping..."
+              sock.puts "PRIVMSG #{x.bot} :XDCC CANCEL"
+
+              $xdcc_sent = false
+              $xdcc_accept = $xdcc_no_accept = false
+              $xdcc_accept_time = $xdcc_ret = nil
+              next
+            else
+              puts_warnings "File already existing, using a safe name..."
+              $xdcc_ret.fname = safe_fname $xdcc_ret.fname
+            end
+          end
+
+          # It's a new download, start from beginning
+          Thread.new do
+            puts "Connecting to: #{x.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
+            exit unless dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
+          end
+        elsif $xdcc_accept and $xdcc_ret != nil and not $xdcc_no_accept and msg =~ /^\001DCC ACCEPT ((".*?").*?|(\S+)) (\d+) (\d+)\001\015$/
+          # DCC RESUME request accepted, continue the download!
+          $xdcc_accept_time = nil
+          $xdcc_accept = false
+          puts "\e[1;32mSUCCESS\e[0m!"
+
+          Thread.new do
+            puts "Connecting to: #{x.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
+            exit unless dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize, File.stat($xdcc_ret.fname).size
+          end
         end
-      else
-        case full_msg
-        when /^PING :(.*)$/
-          sock.puts "PONG :#{$1}"
-        when /^ERROR :(.*)$/
-          puts $1
-        else
-          puts full_msg
+      when /^\d+?$/
+        type_i = type.to_i
+        case type_i
+        when 1 # Print welcome message, because it's nice
+          msg.sub!(/#{Regexp.escape config[x.info][:nick]}/, "\e[34m#{config[x.info][:nick]}\e[0m")
+          puts "! #{msg}"
+        when 376 # Mark the end of the MOTD
+          motd_end = true
+        when 400..533 # Handle errors, except 439
+          next if type_i == 439 # Skip 439
+          puts_error "#{msg}"
+          sock.puts 'QUIT'
         end
+      when "PING"  then sock.puts "PONG :#{msg}"
+      when "ERROR" then (msg =~ /closing link/i ? puts(msg) : puts_error(msg))
       end
     end
   end
