@@ -476,7 +476,7 @@ if __FILE__ == $0
             puts "> \e[1;32m#{msg}\e[0m"
           end
         else
-          if prefix =~ /^NickServ!$/
+          if prefix =~ /^NickServ!/
             if not nick_sent and config[x.info][:nickserv] != nil
               sock.puts "PRIVMSG NickServ :IDENTIFY #{config[x.info][:nickserv]}"
               nick_sent = true
