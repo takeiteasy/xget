@@ -20,6 +20,8 @@ ident_sent = motd_end = nick_sent = nick_check = nick_valid = false
 $xdcc_sent = $xdcc_accept = $xdcc_no_accept = false
 $xdcc_accept_time = $xdcc_ret = nil
 
+#Thread.abort_on_exception = true
+
 # Class to hold DCC SEND info for when waiting for DCC ACCEPT
 class XDCC_SEND
   attr_accessor :fname, :fsize, :ip, :port
