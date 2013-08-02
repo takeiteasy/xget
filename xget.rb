@@ -1,5 +1,8 @@
 #!/usr/bin/env ruby
 
+# This isn't working at the moment - Starting massive refactoring
+# Ruby is starting to really piss me off
+
 begin
   %w(socket thread slop timeout).each { |r| require r }
   require 'Win32/Console/ANSI' if RbConfig::CONFIG['host_os'] =~ /mswin|mingw|cygwin/
@@ -410,48 +413,50 @@ if __FILE__ == $0
     # Message thread, to avoid blocking
     t = Thread.new do
       while true do
-        # Send the next XDCC request
-        if motd_end and not $xdcc_sent
-          cur_req += 1
-          if cur_req >= max_req
-            sock.puts "QUIT" # Quit IRC server
-            Thread.kill t    # Kill message thread
+        unless $xdcc_accept
+          # Send the next XDCC request
+          if motd_end and not $xdcc_sent
+            cur_req += 1
+            if cur_req >= max_req
+              sock.puts "QUIT" # Quit IRC server
+              Thread.kill t    # Kill message thread
+            end
+            x = v[cur_req];
+
+            if x.chan != last_chan
+              sock.puts "PART #{last_chan}" unless last_chan == ""
+              last_chan = x.chan
+              sock.puts "JOIN #{x.chan}"
+            end
+
+            sleep 1 # Cool off before download
+            req_send_time = Time.now
+            sock.puts "PRIVMSG #{x.bot} :XDCC SEND #{x.pack}"
+            $xdcc_sent = true
           end
-          x = v[cur_req];
 
-          if x.chan != last_chan
-            sock.puts "PART #{last_chan}" unless last_chan == ""
-            last_chan = x.chan
-            sock.puts "JOIN #{x.chan}"
+          # Wait 3 seconds for DCC SEND response, if there isn't one, abort
+          if $xdcc_sent and req_send_time > zero_time and not $xdcc_accept
+            if (Time.now - req_send_time).floor > 3
+              puts_error "#{x.bot} took too long to respond, are you sure it's a bot?"
+              sock.puts 'QUIT'
+              Thread.exit
+            end
           end
 
-          sleep 1 # Cool off before download
-          sock.puts "PRIVMSG #{x.bot} :XDCC SEND #{x.pack}"
-          req_send_time = Time.now
-          $xdcc_sent = true
-        end
-
-        # Wait 3 seconds for DCC SEND response, if there isn't one, abort
-        if $xdcc_sent and req_send_time > zero_time and not $xdcc_accept
-          if (Time.now - req_send_time).floor > 3
-            puts_error "#{x.bot} took too long to respond, are you sure it's a bot?"
-            sock.puts 'QUIT'
-            Thread.exit
+          # Wait 3 seconds for a DCC ACCEPT response, if there isn't one, don't resume
+          if $xdcc_sent and $xdcc_accept and $xdcc_accept_time > zero_time
+            if (Time.now - $xdcc_accept_time).floor > 3
+              $xdcc_no_accept = true
+              puts "FAILED! Bot client doesn't support resume!"
+            end
           end
-        end
 
-        # Wait 3 seconds for a DCC ACCEPT response, if there isn't one, don't resume
-        if $xdcc_sent and $xdcc_accept and $xdcc_accept_time > zero_time
-          if (Time.now - $xdcc_accept_time).floor > 3
-            $xdcc_no_accept = true
-            puts "FAILED! Bot client doesn't support resume!"
+          # XDCC bot's client doesn't support DCC RESUME, start from beginning
+          if $xdcc_sent and $xdcc_no_accept
+            puts "Connecting to: #{x.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
+            dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
           end
-        end
-
-        # XDCC bot's client doesn't support DCC RESUME, start from beginning
-        if $xdcc_sent and $xdcc_no_accept
-          puts "Connecting to: #{x.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
-          dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
         end
       end
     end
@@ -471,6 +476,9 @@ if __FILE__ == $0
               sock.puts "PASS #{config[x.info][:pass]}" unless config[x.info][:pass].nil?
               sock.puts "NICK #{config[x.info][:nick]}"
               sock.puts "USER #{config[x.info][:user]} 0 * #{config[x.info][:realname]}"
+              puts "PASS #{config[x.info][:pass]}" unless config[x.info][:pass].nil?
+              puts "NICK #{config[x.info][:nick]}"
+              puts "USER #{config[x.info][:user]} 0 * #{config[x.info][:realname]}"
               ident_sent = true
             when /no ident response/i, /erroneous nickname/i
               puts_error "Ident failed"
