@@ -20,7 +20,10 @@ ident_sent = motd_end = nick_sent = nick_check = nick_valid = false
 $xdcc_sent = $xdcc_accept = $xdcc_no_accept = false
 $xdcc_accept_time = $xdcc_ret = nil
 
-#Thread.abort_on_exception = true
+# Don't ignore exceptions in threads
+# I don't know why this isn't enabled by default
+# This isn't fucking Python
+Thread.abort_on_exception = true
 
 # Class to hold DCC SEND info for when waiting for DCC ACCEPT
 class XDCC_SEND
@@ -206,7 +209,6 @@ def dcc_download ip, port, fname, fsize, read = 0
     rescue Errno::EWOULDBLOCK
     rescue Errno::EAGAIN => e
       puts_error "#{File.basename fname} timed out! #{e}"
-      return false
     end
 
     fh << buf
@@ -224,10 +226,8 @@ def dcc_download ip, port, fname, fsize, read = 0
   $xdcc_accept_time = $xdcc_ret = nil
 
   puts "\n! \e[1;32mSUCCESS\e[0m: downloaded #{File.basename fname} #{elapsed_time}"
-  return true
 rescue EOFError, SocketError => e
   puts "\n! ERROR: #{File.basename fname} failed to download! #{e}"
-  return false
 end
 
 if __FILE__ == $0
@@ -404,7 +404,8 @@ if __FILE__ == $0
       puts_abort "Connect to #{k} timed out! #{e}"
     end
     cur_req, max_req, x, last_chan = -1, v.length, v[0], ""
-    req_send_time = nil
+    zero_time = Time.at 0
+    req_send_time = zero_time
 
     # Message thread, to avoid blocking
     t = Thread.new do
@@ -431,7 +432,7 @@ if __FILE__ == $0
         end
 
         # Wait 3 seconds for DCC SEND response, if there isn't one, abort
-        if $xdcc_sent and not req_send_time.nil? and not $xdcc_accept
+        if $xdcc_sent and req_send_time > zero_time and not $xdcc_accept
           if (Time.now - req_send_time).floor > 3
             puts_error "#{x.bot} took too long to respond, are you sure it's a bot?"
             sock.puts 'QUIT'
@@ -440,7 +441,7 @@ if __FILE__ == $0
         end
 
         # Wait 3 seconds for a DCC ACCEPT response, if there isn't one, don't resume
-        if $xdcc_sent and $xdcc_accept and not $xdcc_accept_time.nil?
+        if $xdcc_sent and $xdcc_accept and $xdcc_accept_time > zero_time
           if (Time.now - $xdcc_accept_time).floor > 3
             $xdcc_no_accept = true
             puts "FAILED! Bot client doesn't support resume!"
@@ -450,7 +451,7 @@ if __FILE__ == $0
         # XDCC bot's client doesn't support DCC RESUME, start from beginning
         if $xdcc_sent and $xdcc_no_accept
           puts "Connecting to: #{x.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
-          exit unless dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
+          dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
         end
       end
     end
@@ -513,7 +514,7 @@ if __FILE__ == $0
             puts_error msg
             sock.puts 'QUIT'
           end
-          req_send_time = nil # It's a valid bot
+          req_send_time = zero_time # It's a valid bot
 
           tmp_fname = fname
           fname     =  $1 if tmp_fname =~ /^"(.*)"$/
@@ -546,7 +547,7 @@ if __FILE__ == $0
           # It's a new download, start from beginning
           Thread.new do
             puts "Connecting to: #{x.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
-            exit unless dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
+            dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
           end
         elsif $xdcc_accept and $xdcc_ret != nil and not $xdcc_no_accept and msg =~ /^\001DCC ACCEPT ((".*?").*?|(\S+)) (\d+) (\d+)\001\015$/
           # DCC RESUME request accepted, continue the download!
@@ -556,7 +557,7 @@ if __FILE__ == $0
 
           Thread.new do
             puts "Connecting to: #{x.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
-            exit unless dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize, File.stat($xdcc_ret.fname).size
+            dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize, File.stat($xdcc_ret.fname).size
           end
         end
       when /^\d+?$/
