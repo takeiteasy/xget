@@ -71,10 +71,17 @@ end
 
 class Stream
   include Emitter
-  attr_accessor :io
+  attr_accessor :io, :serv
 
-  def initialize io
-    @io = io
+  def initialize serv
+    @serv = serv
+    @io   = nil
+  end
+
+  def connect
+    @io = TCPServer.new @serv, 6669
+  rescue SocketError => e
+    puts_abort "Failed to connect to #{@serv}! #{e.message}"
   end
 
   def << data
@@ -97,8 +104,8 @@ end
 class Bot
   attr_reader :stream
 
-  def initialize serv, user
-    @stream = nil
+  def initialize stream
+    @stream = stream
   end
 end
 
@@ -171,7 +178,7 @@ if __FILE__ == $0 then
       end
 
       # Set current block to the new header
-      config["servers"][cur_block] = {} unless config.has_key? cur_block
+      config["servers"][cur_block] = {} unless config["servers"].has_key? cur_block
     elsif line =~ /^(\S+)=(.*+?)$/
       # Check if current line is specifying out directory
       case $1
@@ -193,7 +200,7 @@ if __FILE__ == $0 then
   # Go through each and make copies of the original
   unless config_copies.empty?
     config_copies.each do |k,v|
-      v.each { |x| config[x] = config[k] }
+      v.each { |x| config["servers"][x] = config["servers"][k] }
     end
   end
 
@@ -205,10 +212,10 @@ if __FILE__ == $0 then
     end
   end
 
-  #if to_check.empty?
-    #puts opts
-    #abort "\n No jobs, nothing to do!"
-  #end
+  if to_check.empty?
+    puts opts
+    abort "\n No jobs, nothing to do!"
+  end
 
   # Parse to_check array for valid XDCC links, irc.serv.org/#chan/bot/pack
   tmp_requests, tmp_range = [], []
@@ -258,10 +265,10 @@ if __FILE__ == $0 then
     requests[x.serv] << x
   end
 
-  #if requests.empty?
-    #puts opts
-    #abort "\n No jobs, nothing to do!"
-  #end
+  if requests.empty?
+    puts opts
+    abort "\n No jobs, nothing to do!"
+  end
 
   # Sort requests by pack
   requests.each do |k,v|
@@ -269,5 +276,11 @@ if __FILE__ == $0 then
     v = v.sort_by { |x| [x.chan, x.pack] }.each { |x| puts "\t#{x}" }
   end
   puts
+
+  requests.each do |k, v|
+    req, info = v[0], config["servers"][v[0].info]
+    puts req.inspect
+    puts info
+  end
 end
 
