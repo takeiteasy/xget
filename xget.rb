@@ -14,6 +14,9 @@ Thread.abort_on_exception = true
 ver_maj, ver_min, ver_rev = 2, 0, 0
 ver_str = "#{ver_maj}.#{ver_min}.#{ver_rev}"
 
+# XDCC sending variables
+$xdcc_sent, $xdcc_accepted, $xdcc_ret = false, false, nil
+
 config = {
   "out-dir"       => './',
   "skip-existing" => false,
@@ -67,6 +70,23 @@ class XDCC_REQ
   end
 end
 
+# Class to hold DCC SEND info for when waiting for DCC ACCEPT
+class XDCC_SEND
+  attr_accessor :fname, :fsize, :ip, :port
+
+  def initialize fname, fsize, ip, port
+    @fname = fname
+    @fsize = fsize
+    @ip = ip
+    @port = port
+  end
+
+  def to_s
+    "[ #{self.fname}, #{self.fsize}, #{self.ip}, #{self.port} ]"
+  end
+end
+
+# Class to emit events
 module Emitter
   def callbacks
     @callbacks ||= Hash.new { |h, k| h[k] = [] }
@@ -84,6 +104,7 @@ module Emitter
   end
 end
 
+# Class to handle IRC stream and emit events
 class Stream
   include Emitter
   attr_accessor :io, :buf
@@ -123,6 +144,7 @@ class Stream
   end
 end
 
+# Class to handle IRC stream
 class Bot
   attr_reader :stream
 
@@ -314,8 +336,10 @@ if __FILE__ == $0 then
   end
   puts
 
+  # H-h-here we g-go...
   requests.each do |k, v|
-    req, info, motd = v[0], config["servers"][v[0].info], false
+    req, info = v[0], config["servers"][v[0].info]
+    last_chan, cur_req, motd = "", -1, false
     nick_sent, nick_check, nick_valid = false, false, false
 
     stream  = Stream.new req.serv
@@ -323,9 +347,10 @@ if __FILE__ == $0 then
     stream << "NICK #{info[:nick]}"
     stream << "USER #{info[:user]} 0 * #{info[:real]}"
 
+    # Handle read data
     stream.on :READ do |data|
       /^(?:[:](?<prefix>\S+) )?(?<type>\S+)(?: (?!:)(?<dest>.+?))?(?: [:](?<msg>.+))?$/ =~ data
-      puts ">> #{prefix} | #{type} | #{dest} | #{msg}"
+      #puts ">> #{prefix} | #{type} | #{dest} | #{msg}"
 
       case type
       when 'NOTICE'
@@ -362,6 +387,17 @@ if __FILE__ == $0 then
           end
         end
       when 'PRIVMSG'
+        if $xdcc_sent and not $xdcc_accepted and prefix =~ /#{Regexp.escape req.bot}!(.*)$/i
+          /^\001DCC SEND (?<fname>((".*?").*?|(\S+))) (?<ip>\d+) (?<port>\d+) (?<fsize>\d+)\001\015$/ =~ msg
+          unless $~.nil?
+            tmp_fname = fname
+            fname = $1 if tmp_fname =~ /^"(.*)"$/
+            puts "Preparing to download: \e[36m#{fname}\e[0m"
+            fname = (out_dir.dup << fname)
+            $xdcc_ret = XDCC_SEND.new fname, fsize.to_i, [ip.to_i].pack('N').unpack('C4') * '.', port.to_i
+            exit
+          end
+        end
       when /^\d+?$/
         type_i = type.to_i
         case type_i
@@ -379,13 +415,33 @@ if __FILE__ == $0 then
       end
     end
 
+    # Handle things while waiting for data
     stream.on :WAITING do
+      unless $xdcc_accepted
+        if motd and not $xdcc_sent
+          cur_req += 1
+          stream.disconnect if cur_req >= v.length
+          req = v[cur_req]
+
+          if req.chan != last_chan
+            #stream   << "PART #{last_chan}" unless last_chan == ""
+            #last_chan = req.chan
+            #stream   << "JOIN #{req.chan}"
+          end
+
+          sleep 1 unless cur_req == 0 # Cooldown between downloads
+          stream << "PRIVMSG #{req.bot} :XDCC SEND #{req.pack}"
+          $xdcc_sent = true
+        end
+      end
     end
 
+    # Print sent data
     stream.on :WROTE do |data|
-      puts "<< #{data}"
+      #puts "<< #{data}"
     end
 
+    # Start the bot
     bot = Bot.new stream
     bot.start
   end
