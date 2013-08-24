@@ -31,6 +31,21 @@ def puts_warning msg
   puts "! \e[33mWARNING:\e[0m: #{msg}"
 end
 
+class IO
+  def gets_nonblock
+    @rlnb_buffer ||= ""
+    ch = nil
+    while ch = self.read_nonblock(1)
+      @rlnb_buffer += ch
+      if ch == "\n" then
+        res  = @rlnb_buffer
+        @rlnb_buffer = ""
+        return res
+      end
+    end
+  end
+end
+
 # Class to hold XDCC requests
 class XDCC_REQ
   attr_accessor :serv, :chan, :bot, :pack, :info
@@ -38,7 +53,7 @@ class XDCC_REQ
   def initialize serv, chan, bot, pack, info = "*"
     @serv = serv
     @chan = chan
-    @bot = bot
+    @bot  = bot
     @pack = pack
     @info = info
   end
@@ -71,28 +86,35 @@ end
 
 class Stream
   include Emitter
-  attr_accessor :io, :serv
+  attr_accessor :io, :buf
 
   def initialize serv
-    @serv = serv
-    @io   = nil
+    @buf = []
+    @io  = TCPSocket.new serv, 6667
+  rescue SocketError => e
+    puts_abort "Failed to connect to #{serv}! #{e.message}"
   end
 
-  def connect
-    @io = TCPServer.new @serv, 6669
-  rescue SocketError => e
-    puts_abort "Failed to connect to #{@serv}! #{e.message}"
+  def disconnect
+    @io.puts 'QUIT'
   end
 
   def << data
-    @io.puts data
-    emit :WROTE, data
+    @buf << data
+  end
+
+  def write
+    @buf.each do |x|
+      @io.puts x
+      emit :WROTE, x
+    end
+    @buf = []
   rescue EOFError, Errno::ECONNRESET
     emit :CLOSED
   end
 
-  def >>
-    read = @io.read_nonblock 512
+  def read
+    read = @io.gets_nonblock
     emit :READ, read
   rescue IO::WaitReadable
     emit :WAITING
@@ -106,6 +128,21 @@ class Bot
 
   def initialize stream
     @stream = stream
+    stream.on :CLOSED do stop; end
+  end
+
+  def start
+    @running = true
+    tick while @running
+  end
+
+  def stop
+    @running = false
+  end
+
+  def tick
+    stream.read
+    stream.write
   end
 end
 
@@ -222,9 +259,9 @@ if __FILE__ == $0 then
   to_check.each do |x|
     if x =~ /^(\w+?).(\w+?).(\w+?)\/#(\S+)\/(\S+)\/(\d+)(..\d+)?$/
       serv = [$1, $2, $3].join(".")
-      info = (config.has_key?(serv) ? serv : "*")
+      info = (config["servers"].has_key?(serv) ? serv : "*")
       chan = "##{$4}"
-      bot = $5
+      bot  = $5
       pack = $6.to_i
       unless $7.nil?
         to_range = $7[2..-1].to_i # Clip off the ".."
@@ -278,9 +315,79 @@ if __FILE__ == $0 then
   puts
 
   requests.each do |k, v|
-    req, info = v[0], config["servers"][v[0].info]
-    puts req.inspect
-    puts info
+    req, info, motd = v[0], config["servers"][v[0].info], false
+    nick_sent, nick_check, nick_valid = false, false, false
+
+    stream  = Stream.new req.serv
+    stream << "PASS #{info[:pass]}" unless info[:pass].nil?
+    stream << "NICK #{info[:nick]}"
+    stream << "USER #{info[:user]} 0 * #{info[:real]}"
+
+    stream.on :READ do |data|
+      /^(?:[:](?<prefix>\S+) )?(?<type>\S+)(?: (?!:)(?<dest>.+?))?(?: [:](?<msg>.+))?$/ =~ data
+      puts ">> #{prefix} | #{type} | #{dest} | #{msg}"
+
+      case type
+      when 'NOTICE'
+        if dest == 'AUTH'
+          if msg =~ /erroneous nickname/i
+            puts_error 'Login failed'
+            stream.disconnect
+          end
+        else
+          if prefix =~ /^NickServ!/
+            if not nick_sent and info[:nserv] != nil
+              stream << "PRIVMSG NickServ :IDENTIFY #{info[:nserv]}"
+              nick_sent = true
+            elsif nick_sent and not nick_check
+              case msg
+              when /password incorrect/i
+                nick_valid = false
+                nick_check = true
+              when /password accepted/i
+                nick_valid = true
+                nick_check = true
+              end
+            end
+            puts "> \e[1;33m#{msg}\e[0m"
+          elsif prefix =~ /^#{Regexp.escape req.bot}!(.*)$/i
+            case msg
+            when /already requested that pack/i, /closing connection/i, /you have a dcc pending/i, /you can only have (\d+?) transfer at a time/i
+              puts_error msg
+              stream << "PRIVMSG #{req.bot} :XDCC CANCEL"
+              stream << 'QUIT'
+            else
+              puts "! #{prefix}: #{msg}"
+            end
+          end
+        end
+      when 'PRIVMSG'
+      when /^\d+?$/
+        type_i = type.to_i
+        case type_i
+        when 1 # Print welcome message, because it's nice
+          msg.sub!(/#{Regexp.escape info[:nick]}/, "\e[34m#{info[:nick]}\e[0m")
+          puts "! #{msg}"
+        when 400..533 # Handle errors, except 439
+          next if type_i == 439 # Skip 439
+          puts_error "#{msg}"
+          stream.disconnect
+        when 376 then motd = true # Mark the end of the MOTD
+        end
+      when 'PING'  then stream << "PONG :#{msg}"
+      when 'ERROR' then (msg =~ /closing link/i ? puts(msg) : puts_error(msg))
+      end
+    end
+
+    stream.on :WAITING do
+    end
+
+    stream.on :WROTE do |data|
+      puts "<< #{data}"
+    end
+
+    bot = Bot.new stream
+    bot.start
   end
 end
 
