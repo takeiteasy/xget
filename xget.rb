@@ -509,6 +509,7 @@ if __FILE__ == $0 then
             puts_error 'Login failed'
             stream.disconnect
           end
+          puts "> \e[1;32m#{msg}\e[0m"
         else
           if prefix =~ /^NickServ!/
             if not nick_sent and info[:nserv] != nil
