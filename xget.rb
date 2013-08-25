@@ -1,5 +1,10 @@
 #!/usr/bin/env ruby
 
+# xget.rb - xget
+# Created by Rusty Shackleford on 2013/05/19
+# Copyright (c) 2013, Rusty Shackleford
+# All rights reserved.
+
 begin
   require 'Win32/Console/ANSI' if RbConfig::CONFIG['host_os'] =~ /mswin|mingw|cygwin/
   %w(socket thread slop timeout).each { |r| require r }
