@@ -626,9 +626,9 @@ if __FILE__ == $0 then
           req = v[cur_req]
 
           if req.chan != last_chan
-            #stream   << "PART #{last_chan}" unless last_chan == ""
-            #last_chan = req.chan
-            #stream   << "JOIN #{req.chan}"
+            stream   << "PART #{last_chan}" unless last_chan == ""
+            last_chan = req.chan
+            stream   << "JOIN #{req.chan}"
           end
 
           sleep 1 unless cur_req == 0 # Cooldown between downloads
