@@ -118,9 +118,11 @@ class Stream
 
   def initialize serv
     @buf = []
-    @io  = TCPSocket.new serv, 6667
+    timeout(5) { @io  = TCPSocket.new serv, 6667 }
   rescue SocketError => e
     puts_abort "Failed to connect to #{serv}! #{e.message}"
+  rescue Timeout::Error
+    puts_abort "Connection to #{serv} timed out!"
   end
 
   def disconnect
@@ -258,7 +260,12 @@ end
 
 # DCC download handler
 def dcc_download ip, port, fname, fsize, read = 0
-  sock = TCPSocket.new ip, port
+  sock = nil 
+  begin
+    timeout(5) { sock = TCPSocket.new ip, port }
+  rescue Timeout::Error
+    puts_abort "Connection to #{ip} timed out!"
+  end
   puts_abort "Failed to connect to \"#{ip}:#{port}\": #{e}" if sock.nil?
 
   fsize_clean = bytes_to_closest fsize
@@ -480,15 +487,15 @@ if __FILE__ == $0 then
     last_chan, cur_req, motd = "", -1, false
     nick_sent, nick_check, nick_valid = false, false, false
 
-    xdcc_sent, xdcc_accepted, xdcc_no_accept = false, false, false
-    xdcc_accept_time, xdcc_ret = nil, nil
+    xdcc_sent, xdcc_accepted = false, false
+    xdcc_accept_time, xdcc_ret, req_send_time = nil, nil, nil
 
 
     stream  = Stream.new req.serv
     bot     = Bot.new stream
-    stream << "PASS #{info[:pass]}" unless info[:pass].nil?
     stream << "NICK #{info[:nick]}"
     stream << "USER #{info[:user]} 0 * #{info[:real]}"
+    stream << "PASS #{info[:pass]}" unless info[:pass].nil?
 
     # Handle read data
     stream.on :READ do |data|
@@ -533,6 +540,8 @@ if __FILE__ == $0 then
         if xdcc_sent and not xdcc_accepted and prefix =~ /#{Regexp.escape req.bot}!(.*)$/i
           /^\001DCC SEND (?<fname>((".*?").*?|(\S+))) (?<ip>\d+) (?<port>\d+) (?<fsize>\d+)\001\015$/ =~ msg
           unless $~.nil?
+            req_send_time = nil
+
             tmp_fname = fname
             fname = $1 if tmp_fname =~ /^"(.*)"$/
             puts "Preparing to download: \e[36m#{fname}\e[0m"
@@ -550,7 +559,7 @@ if __FILE__ == $0 then
                 puts_warning "File already exists, skipping..."
                 stream << "PRIVMSG #{req.bot} :XDCC CANCEL"
 
-                xdcc_sent, xdcc_accepted, xdcc_no_accept = false, false, false
+                xdcc_sent, xdcc_accepted = false, false
                 xdcc_accept_time, xdcc_ret = nil, nil
                 next
               else
@@ -567,11 +576,11 @@ if __FILE__ == $0 then
               end
 
               Process.wait pid
-              xdcc_sent, xdcc_accepted, xdcc_no_accept = false, false, false
+              xdcc_sent, xdcc_accepted = false, false
               xdcc_accept_time, xdcc_ret = nil, nil
             end
           end
-        elsif xdcc_accepted and xdcc_ret != nil and not xdcc_no_accept and msg =~ /^\001DCC ACCEPT ((".*?").*?|(\S+)) (\d+) (\d+)\001\015$/
+        elsif xdcc_accepted and xdcc_ret != nil and msg =~ /^\001DCC ACCEPT ((".*?").*?|(\S+)) (\d+) (\d+)\001\015$/
           # DCC RESUME request accepted, continue the download!
           xdcc_accept_time = nil
           xdcc_accepted    = false
@@ -584,7 +593,7 @@ if __FILE__ == $0 then
             end
 
             Process.wait pid
-            xdcc_sent, xdcc_accepted, xdcc_no_accept = false, false, false
+            xdcc_sent, xdcc_accepted = false, false
             xdcc_accept_time, xdcc_ret = nil, nil
           end
         end
@@ -624,12 +633,31 @@ if __FILE__ == $0 then
 
           sleep 1 unless cur_req == 0 # Cooldown between downloads
           stream << "PRIVMSG #{req.bot} :XDCC SEND #{req.pack}"
+          req_send_time = Time.now
           xdcc_sent = true
+        end
+
+        # Wait 3 seconds for DCC SEND response, if there isn't one, abort
+        if xdcc_sent and not req_send_time.nil? and not xdcc_accepted
+          if (Time.now - req_send_time).floor > 3
+            puts_error "#{req.bot} took too long to respond, are you sure it's a bot?"
+            stream.disconnect
+            bot.stop
+          end
+        end
+
+        # Wait 3 seconds for a DCC ACCEPT response, if there isn't one, don't resume
+        if xdcc_sent and xdcc_accepted and not xdcc_accept_time.nil?
+          if (Time.now - xdcc_accept_time).floor > 3
+            puts "FAILED! Bot client doesn't support resume!"
+            puts "Connecting to: #{req.bot} @ #{xdcc_ret.ip}:#{xdcc_ret.port}"
+            dcc_download xdcc_ret.ip, xdcc_ret.port, xdcc_ret.fname, xdcc_ret.fsize
+          end
         end
       end
     end
 
-    # Print sent data
+    # Print sent data, for debugging only really
     stream.on :WROTE do |data|
       #puts "\e[1;37m<<\e[0m #{data}"
     end
