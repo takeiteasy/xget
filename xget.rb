@@ -15,7 +15,8 @@ ver_maj, ver_min, ver_rev = 2, 0, 0
 ver_str = "#{ver_maj}.#{ver_min}.#{ver_rev}"
 
 # XDCC sending variables
-$xdcc_sent, $xdcc_accepted, $xdcc_ret = false, false, nil
+$xdcc_sent, $xdcc_accepted, $xdcc_no_accept = false, false, false
+$xdcc_accept_time, $xdcc_ret = nil, nil
 
 config = {
   "out-dir"       => './',
@@ -34,6 +35,7 @@ def puts_warning msg
   puts "! \e[33mWARNING:\e[0m: #{msg}"
 end
 
+# Extend IO to readlines without blocking
 class IO
   def gets_nonblock
     @rlnb_buffer ||= ""
@@ -46,6 +48,13 @@ class IO
         return res
       end
     end
+  end
+end
+
+# Extend Array to get averages
+class Array
+  def average
+    inject(:+) / count
   end
 end
 
@@ -166,6 +175,140 @@ class Bot
     stream.read
     stream.write
   end
+end
+
+# Get relative size from bytes
+def bytes_to_closest bytes
+  fsize_arr = [ 'B', 'KB', 'MB', 'GB', 'TB' ]
+  exp = (Math.log(bytes) / Math.log(1024)).to_i
+  exp = fsize_arr.length if exp > fsize_arr.length
+  bytes /= 1024.0 ** exp
+  return "#{bytes.round(2)}#{fsize_arr[exp]}"
+end
+
+# Loop until there is no file with the same name
+def safe_fname fname
+  return fname unless File.exists? fname
+
+  ext = File.extname fname
+  base = File.basename fname, ext
+  dir = File.dirname fname
+
+  cur = 2
+  while true
+    test = "#{dir}/#{base} (#{cur})#{ext}"
+    return test unless File.exists? test
+    cur += 1
+  end
+end
+
+# Get a close relative time remaining, in words
+def time_distance t
+  if t < 60
+    case t
+    when 0 then "- nevermind, done!"
+    when 1..4 then "in a moment!"
+    when 5..9 then "less than 10 seconds"
+    when 10..19 then "less than 20 seconds"
+    when 20..39 then "half a minute"
+    else "less than a minute"
+    end
+  else # Use minutes, to aovid big numbers
+    t = t / 60.0
+    case t.to_i
+    when 1 then "about a minute"
+    when 2..45 then "#{t.round} minutes"
+    when 45..90 then "about an hour"
+    when 91..1440 then "about #{(t / 60.0).round} hours"
+    when 1441..2520 then "about a day"
+    when 2521..86400 then "about #{(t / 1440.0).round} days"
+    else "about #{(t/ 43200.0).round} months"
+    end
+  end
+end
+
+# Get elapsed time in words
+def time_elapsed t
+  return "instantly!" if t <= 0
+
+  # Get the GMTime from seconds and split
+  ta = Time.at(t).gmtime.strftime('%S|%M|%H|%-d|%-m|%Y').split('|', 6).collect { |i| i.to_i }
+  ta[-1] -= 1970 # fuck the police
+  ta[-2] -= 1 # fuck, fuck
+  ta[-3] -= 1 # fuck the police
+
+  # Remove the 0 digets
+  i = 0
+  ta.reverse.each do |x|
+    break if x != 0
+    i += 1
+  end
+
+  # Unit suffixes
+  suffix = [ "seconds", "minutes", "hours", "days", "months", "years" ];
+  # Don't use plural if x is 1
+  plural = ->(x, y) { x == 1 ? y[0..-2] : y }
+  # Format string to "value unit"
+  format_str = ->(x) { "#{ta[x]} #{plural[ta[x], suffix[x]]}, " }
+
+  # Form the string
+  ta = ta.take(ta.length - i)
+  str = ""
+  (ta.length - 1).downto(0) { |x| str += format_str[x] }
+  "in #{str[0..-3]}"
+end
+
+# DCC download handler
+def dcc_download ip, port, fname, fsize, read = 0
+  sock = TCPSocket.new ip, port
+  puts_abort "Failed to connect to \"#{ip}:#{port}\": #{e}" if sock.nil?
+
+  fsize_clean = bytes_to_closest fsize
+  avgs, last_check, start_time = [], Time.now - 2, Time.now
+  fh = File.open fname, (read == 0 ? "w" : "a") # Write or append
+
+  # Form the status bar
+  print_bar = ->() {
+    print "\r\e[0K> [ \e[1;37m"
+    pc = read.to_f / fsize.to_f * 100.0
+    bars = (pc / 10).to_i
+    bars.times { print "#" }
+    (10 - bars).times { print " " }
+    avg = avgs.average * 1024.0
+    time_rem = time_distance ((fsize - read) / avg) * 8.0
+    print "\e[0m ] #{pc.round(2)}% #{bytes_to_closest read}/#{fsize_clean} \e[1;37m@\e[0m #{bytes_to_closest avg}/s \e[1;37min\e[0m #{time_rem}"
+
+    last_check = Time.now
+    avgs.clear
+  }
+
+  while buf = sock.readpartial(8192)
+    read += buf.bytesize
+    avgs << buf.bytesize
+    print_bar[] if (Time.now - last_check) > 1 and not avgs.empty?
+
+    begin
+      sock.write_nonblock [read].pack('N')
+    rescue Errno::EWOULDBLOCK
+    rescue Errno::EAGAIN => e
+      puts_error "#{File.basename fname} timed out! #{e}"
+    end
+
+    fh << buf
+    break if read >= fsize
+  end
+  print_bar.call unless avgs.empty?
+  elapsed_time = time_elapsed (Time.now - start_time).to_i
+
+  sock.close
+  fh.close
+
+  $xdcc_sent, $xdcc_accepted, $xdcc_no_accept = false, false, false
+  $xdcc_accept_time, $xdcc_ret = nil, nil
+
+  puts "\n! \e[1;32mSUCCESS\e[0m: downloaded #{File.basename fname} #{elapsed_time}"
+rescue EOFError, SocketError => e
+  puts "\n! ERROR: #{File.basename fname} failed to download! #{e}"
 end
 
 if __FILE__ == $0 then
@@ -350,7 +493,7 @@ if __FILE__ == $0 then
     # Handle read data
     stream.on :READ do |data|
       /^(?:[:](?<prefix>\S+) )?(?<type>\S+)(?: (?!:)(?<dest>.+?))?(?: [:](?<msg>.+))?$/ =~ data
-      #puts ">> #{prefix} | #{type} | #{dest} | #{msg}"
+      #puts "\e[1;37m>>\e[0m #{prefix} | #{type} | #{dest} | #{msg}"
 
       case type
       when 'NOTICE'
@@ -393,9 +536,44 @@ if __FILE__ == $0 then
             tmp_fname = fname
             fname = $1 if tmp_fname =~ /^"(.*)"$/
             puts "Preparing to download: \e[36m#{fname}\e[0m"
-            fname = (out_dir.dup << fname)
+            fname = (config["out-dir"].dup << fname)
             $xdcc_ret = XDCC_SEND.new fname, fsize.to_i, [ip.to_i].pack('N').unpack('C4') * '.', port.to_i
-            exit
+
+            # Check if the for unfinished download amd try to resume
+            if File.exists? $xdcc_ret.fname and File.stat($xdcc_ret.fname).size < $xdcc_ret.fsize
+              stream << "PRIVMSG #{req.bot} :\001DCC RESUME #{tmp_fname} #{$xdcc_ret.port} #{File.stat($xdcc_ret.fname).size}\001"
+              $xdcc_accepted = true
+              print "! Incomplete file detected. Attempting to resume..."
+              next # Skip and wait for "DCC ACCEPT"
+            elsif File.exists? $xdcc_ret.fname
+              if config["skip-existing"]
+                puts_warning "File already exists, skipping..."
+                stream << "PRIVMSG #{req.bot} :XDCC CANCEL"
+
+                $xdcc_sent, $xdcc_accepted, $xdcc_no_accept = false, false, false
+                $xdcc_accept_time, $xdcc_ret = nil, nil
+                next
+              else
+                puts_warnings "File already existing, using a safe name..."
+                $xdcc_ret.fname = safe_fname $xdcc_ret.fname
+              end
+            end
+
+            # It's a new download, start from beginning
+            Thread.new do
+              puts "Connecting to: #{req.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
+              dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
+            end
+          end
+        elsif $xdcc_accepted and $xdcc_ret != nil and not $xdcc_no_accept and msg =~ /^\001DCC ACCEPT ((".*?").*?|(\S+)) (\d+) (\d+)\001\015$/
+          # DCC RESUME request accepted, continue the download!
+          $xdcc_accept_time = nil
+          $xdcc_accepted    = false
+          puts "\e[1;32mSUCCESS\e[0m!"
+
+          Thread.new do
+            puts "Connecting to: #{req.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
+            dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize, File.stat($xdcc_ret.fname).size
           end
         end
       when /^\d+?$/
@@ -420,7 +598,10 @@ if __FILE__ == $0 then
       unless $xdcc_accepted
         if motd and not $xdcc_sent
           cur_req += 1
-          stream.disconnect if cur_req >= v.length
+          if cur_req >= v.length
+            stream.disconnect
+            next
+          end
           req = v[cur_req]
 
           if req.chan != last_chan
@@ -438,7 +619,7 @@ if __FILE__ == $0 then
 
     # Print sent data
     stream.on :WROTE do |data|
-      #puts "<< #{data}"
+      #puts "\e[1;37m<<\e[0m #{data}"
     end
 
     # Start the bot
