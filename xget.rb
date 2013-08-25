@@ -13,12 +13,8 @@ Thread.abort_on_exception = true
 $stdout.sync = true
 
 # Version values
-ver_maj, ver_min, ver_rev = 2, 0, 0
-ver_str = "#{ver_maj}.#{ver_min}.#{ver_rev}"
-
-# XDCC sending variables
-$xdcc_sent, $xdcc_accepted, $xdcc_no_accept = false, false, false
-$xdcc_accept_time, $xdcc_ret = nil, nil
+$ver_maj, $ver_min, $ver_rev = 2, 0, 0
+$ver_str = "#{$ver_maj}.#{$ver_min}.#{$ver_rev}"
 
 config = {
   "out-dir"       => './',
@@ -316,7 +312,7 @@ if __FILE__ == $0 then
     on :help, :ignore_case => true
 
     on 'v', 'version', 'Print version' do
-      puts "#{$0}: v#{ver_str}"
+      puts "#{$0}: v#{$ver_str}"
       exit
     end
 
@@ -484,6 +480,10 @@ if __FILE__ == $0 then
     last_chan, cur_req, motd = "", -1, false
     nick_sent, nick_check, nick_valid = false, false, false
 
+    xdcc_sent, xdcc_accepted, xdcc_no_accept = false, false, false
+    xdcc_accept_time, xdcc_ret = nil, nil
+
+
     stream  = Stream.new req.serv
     bot     = Bot.new stream
     stream << "PASS #{info[:pass]}" unless info[:pass].nil?
@@ -530,62 +530,62 @@ if __FILE__ == $0 then
           end
         end
       when 'PRIVMSG'
-        if $xdcc_sent and not $xdcc_accepted and prefix =~ /#{Regexp.escape req.bot}!(.*)$/i
+        if xdcc_sent and not xdcc_accepted and prefix =~ /#{Regexp.escape req.bot}!(.*)$/i
           /^\001DCC SEND (?<fname>((".*?").*?|(\S+))) (?<ip>\d+) (?<port>\d+) (?<fsize>\d+)\001\015$/ =~ msg
           unless $~.nil?
             tmp_fname = fname
             fname = $1 if tmp_fname =~ /^"(.*)"$/
             puts "Preparing to download: \e[36m#{fname}\e[0m"
             fname = (config["out-dir"].dup << fname)
-            $xdcc_ret = XDCC_SEND.new fname, fsize.to_i, [ip.to_i].pack('N').unpack('C4') * '.', port.to_i
+            xdcc_ret = XDCC_SEND.new fname, fsize.to_i, [ip.to_i].pack('N').unpack('C4') * '.', port.to_i
 
             # Check if the for unfinished download amd try to resume
-            if File.exists? $xdcc_ret.fname and File.stat($xdcc_ret.fname).size < $xdcc_ret.fsize
-              stream << "PRIVMSG #{req.bot} :\001DCC RESUME #{tmp_fname} #{$xdcc_ret.port} #{File.stat($xdcc_ret.fname).size}\001"
-              $xdcc_accepted = true
+            if File.exists? xdcc_ret.fname and File.stat(xdcc_ret.fname).size < xdcc_ret.fsize
+              stream << "PRIVMSG #{req.bot} :\001DCC RESUME #{tmp_fname} #{xdcc_ret.port} #{File.stat(xdcc_ret.fname).size}\001"
+              xdcc_accepted = true
               print "! Incomplete file detected. Attempting to resume..."
               next # Skip and wait for "DCC ACCEPT"
-            elsif File.exists? $xdcc_ret.fname
+            elsif File.exists? xdcc_ret.fname
               if config["skip-existing"]
                 puts_warning "File already exists, skipping..."
                 stream << "PRIVMSG #{req.bot} :XDCC CANCEL"
 
-                $xdcc_sent, $xdcc_accepted, $xdcc_no_accept = false, false, false
-                $xdcc_accept_time, $xdcc_ret = nil, nil
+                xdcc_sent, xdcc_accepted, xdcc_no_accept = false, false, false
+                xdcc_accept_time, xdcc_ret = nil, nil
                 next
               else
                 puts_warnings "File already existing, using a safe name..."
-                $xdcc_ret.fname = safe_fname $xdcc_ret.fname
+                xdcc_ret.fname = safe_fname xdcc_ret.fname
               end
             end
 
             # It's a new download, start from beginning
             Thread.new do
               pid = fork do
-                puts "Connecting to: #{req.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
-                dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
+                puts "Connecting to: #{req.bot} @ #{xdcc_ret.ip}:#{xdcc_ret.port}"
+                dcc_download xdcc_ret.ip, xdcc_ret.port, xdcc_ret.fname, xdcc_ret.fsize
               end
 
               Process.wait pid
-              $xdcc_sent, $xdcc_accepted, $xdcc_no_accept = false, false, false
-              $xdcc_accept_time, $xdcc_ret = nil, nil
+              xdcc_sent, xdcc_accepted, xdcc_no_accept = false, false, false
+              xdcc_accept_time, xdcc_ret = nil, nil
             end
           end
-        elsif $xdcc_accepted and $xdcc_ret != nil and not $xdcc_no_accept and msg =~ /^\001DCC ACCEPT ((".*?").*?|(\S+)) (\d+) (\d+)\001\015$/
+        elsif xdcc_accepted and xdcc_ret != nil and not xdcc_no_accept and msg =~ /^\001DCC ACCEPT ((".*?").*?|(\S+)) (\d+) (\d+)\001\015$/
           # DCC RESUME request accepted, continue the download!
-          $xdcc_accept_time = nil
-          $xdcc_accepted    = false
+          xdcc_accept_time = nil
+          xdcc_accepted    = false
           puts "\e[1;32mSUCCESS\e[0m!"
 
           Thread.new do
             pid = fork do
-              puts "Connecting to: #{req.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
-              dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize, File.stat($xdcc_ret.fname).size
+              puts "Connecting to: #{req.bot} @ #{xdcc_ret.ip}:#{xdcc_ret.port}"
+              dcc_download xdcc_ret.ip, xdcc_ret.port, xdcc_ret.fname, xdcc_ret.fsize, File.stat(xdcc_ret.fname).size
             end
 
             Process.wait pid
-            $xdcc_sent, $xdcc_accepted, $xdcc_no_accept = false, false, false
-            $xdcc_accept_time, $xdcc_ret = nil, nil
+            xdcc_sent, xdcc_accepted, xdcc_no_accept = false, false, false
+            xdcc_accept_time, xdcc_ret = nil, nil
           end
         end
       when /^\d+?$/
@@ -607,8 +607,8 @@ if __FILE__ == $0 then
 
     # Handle things while waiting for data
     stream.on :WAITING do
-      unless $xdcc_accepted
-        if motd and not $xdcc_sent
+      unless xdcc_accepted
+        if motd and not xdcc_sent
           cur_req += 1
           if cur_req >= v.length
             stream.disconnect
@@ -624,7 +624,7 @@ if __FILE__ == $0 then
 
           sleep 1 unless cur_req == 0 # Cooldown between downloads
           stream << "PRIVMSG #{req.bot} :XDCC SEND #{req.pack}"
-          $xdcc_sent = true
+          xdcc_sent = true
         end
       end
     end
