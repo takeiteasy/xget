@@ -1,14 +1,16 @@
 #!/usr/bin/env ruby
 
 begin
-  %w(socket thread slop timeout).each { |r| require r }
   require 'Win32/Console/ANSI' if RbConfig::CONFIG['host_os'] =~ /mswin|mingw|cygwin/
+  %w(socket thread slop timeout).each { |r| require r }
 rescue LoadError
   abort "#{$0} requires slop and, if you're on Windows, win32console\nPlease run 'gem install slop win32console'"
 end
 
 # Why isn't this enabled by default?
 Thread.abort_on_exception = true
+# Put standard output into syncronised mode
+$stdout.sync = true
 
 # Version values
 ver_maj, ver_min, ver_rev = 2, 0, 0
@@ -303,9 +305,6 @@ def dcc_download ip, port, fname, fsize, read = 0
   sock.close
   fh.close
 
-  $xdcc_sent, $xdcc_accepted, $xdcc_no_accept = false, false, false
-  $xdcc_accept_time, $xdcc_ret = nil, nil
-
   puts "\n! \e[1;32mSUCCESS\e[0m: downloaded #{File.basename fname} #{elapsed_time}"
 rescue EOFError, SocketError => e
   puts "\n! ERROR: #{File.basename fname} failed to download! #{e}"
@@ -486,6 +485,7 @@ if __FILE__ == $0 then
     nick_sent, nick_check, nick_valid = false, false, false
 
     stream  = Stream.new req.serv
+    bot     = Bot.new stream
     stream << "PASS #{info[:pass]}" unless info[:pass].nil?
     stream << "NICK #{info[:nick]}"
     stream << "USER #{info[:user]} 0 * #{info[:real]}"
@@ -561,8 +561,14 @@ if __FILE__ == $0 then
 
             # It's a new download, start from beginning
             Thread.new do
-              puts "Connecting to: #{req.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
-              dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
+              pid = fork do
+                puts "Connecting to: #{req.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
+                dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize
+              end
+
+              Process.wait pid
+              $xdcc_sent, $xdcc_accepted, $xdcc_no_accept = false, false, false
+              $xdcc_accept_time, $xdcc_ret = nil, nil
             end
           end
         elsif $xdcc_accepted and $xdcc_ret != nil and not $xdcc_no_accept and msg =~ /^\001DCC ACCEPT ((".*?").*?|(\S+)) (\d+) (\d+)\001\015$/
@@ -572,8 +578,14 @@ if __FILE__ == $0 then
           puts "\e[1;32mSUCCESS\e[0m!"
 
           Thread.new do
-            puts "Connecting to: #{req.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
-            dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize, File.stat($xdcc_ret.fname).size
+            pid = fork do
+              puts "Connecting to: #{req.bot} @ #{$xdcc_ret.ip}:#{$xdcc_ret.port}"
+              dcc_download $xdcc_ret.ip, $xdcc_ret.port, $xdcc_ret.fname, $xdcc_ret.fsize, File.stat($xdcc_ret.fname).size
+            end
+
+            Process.wait pid
+            $xdcc_sent, $xdcc_accepted, $xdcc_no_accept = false, false, false
+            $xdcc_accept_time, $xdcc_ret = nil, nil
           end
         end
       when /^\d+?$/
@@ -623,7 +635,6 @@ if __FILE__ == $0 then
     end
 
     # Start the bot
-    bot = Bot.new stream
     bot.start
   end
 end
