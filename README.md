@@ -8,7 +8,7 @@ Also, if you have mutiple packages from the same bot in a row, use a range, like
 
 ## Screenshot
 
-![alt text](https://github.com/badassmofo/xget/raw/master/screen.png)
+![screenshot](https://github.com/takeiteasy/xget/raw/master/screen.png)
 
 ## Instructions
 
