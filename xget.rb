@@ -447,7 +447,7 @@ if __FILE__ == $0 then
 
       # Convert range array to new requests
       unless tmp_range.empty?
-        rmp_range.each { |y| tmp_requests.push XDCC_REQ.new serv, chan, bot, y, info }
+        tmp_range.each { |y| tmp_requests.push XDCC_REQ.new serv, chan, bot, y, info }
         tmp_range.clear
       end
     else
