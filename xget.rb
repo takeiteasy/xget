@@ -22,9 +22,11 @@ $ver_maj, $ver_min, $ver_rev = 2, 0, 0
 $ver_str = "#{$ver_maj}.#{$ver_min}.#{$ver_rev}"
 
 config = {
-  "out-dir"       => './',
-  "skip-existing" => false,
-  "servers"       => {} }
+  "out-dir"        => './',
+  "skip-existing"  => false,
+  "servers"        => {},
+  "sleep-interval" => 5
+}
 
 def puts_error msg
   puts "! \e[31mERROR\e[0m: #{msg}"
@@ -336,7 +338,8 @@ if __FILE__ == $0 then
     o.string '--nickserv', 'Password for Nickserv'
     o.array '--files', 'Pass list of files to parse for links', as: Array, delimiter: ':'
     o.string '--out-dir', 'Output directory to save fiels to', :default => "./"
-    o.bool '--skip-existing', 'Don\' download files that already exist', :default => false
+    o.bool '--skip-existing', 'Don\' download files that already exist'
+    o.int '--sleep-interval', 'Time in seconds to sleep before requesting next pack. Zero for no sleep.'
   end
 
   if opts.help?
@@ -397,6 +400,7 @@ if __FILE__ == $0 then
         config[$1] = t_out_dir
         config[$1] << "/" unless config[$1][-1] == "/"
         next
+      when "sleep-interval" then config[$1] = $2.to_i
       when "skip-existing" then config[$1] = ($2 == "true")
       else
         # Add value to current header, default is *
@@ -412,6 +416,10 @@ if __FILE__ == $0 then
       v.each { |x| config["servers"][x] = config["servers"][k] }
     end
   end
+
+  # Set the set the command line config options if specified
+  config["skip-existing"] = opts["skip-existing"] if opts["skip-existing"]
+  config["sleep-interval"] = opts["sleep-interval"] unless opts["sleep-interval"].nil?
 
   # Take remaining arguments and all lines from --files arg and put into array
   to_check = ($*)
@@ -639,7 +647,12 @@ if __FILE__ == $0 then
             stream   << "JOIN #{req.chan}"
           end
 
-          sleep 1 unless cur_req == 0 # Cooldown between downloads
+          # Cooldown between downloads
+          if cur_req > 0
+            puts "Sleeping for #{config["sleep-interval"]} seconds before requesting the next pack"
+            sleep(config["sleep-interval"])
+          end
+
           stream << "PRIVMSG #{req.bot} :XDCC SEND #{req.pack}"
           req_send_time = Time.now
           xdcc_sent = true
