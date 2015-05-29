@@ -319,24 +319,24 @@ rescue EOFError, SocketError => e
 end
 
 if __FILE__ == $0 then
-  opts = Slop.parse! do
-    banner " Usage: #{$0} [options] [value] [links] [--files] [file1:file2:file3]\n"
-    on :help, :ignore_case => true
+  opts = Slop.parse do |o|
+    o.banner = " Usage: #{$0} [options] [value] [links] [--files] [file1:file2:file3]\n"
+    o.bool '-h', '--help', 'Prints help'
 
-    on 'v', 'version', 'Print version' do
+    o.on '-v', '--version', 'Print version' do
       puts "#{$0}: v#{$ver_str}"
       exit
     end
 
-    on 'config=',       'Config file location'
-    on 'user=',         'IRC \'USER\' for Ident'
-    on 'nick=',         'IRC nick'
-    on 'pass=',         'IRC \'PASS\' for Ident'
-    on 'realname=',     'Realname for \'USER\' Ident'
-    on 'nickserv=',     'Password for Nickserv'
-    on 'files=',        'Pass list of files to parse for links',   as: Array, delimiter: ':'
-    on 'out-dir=',      'Output directory to save fiels to',       :default => "./"
-    on 'skip-existing', 'Don\' download files that already exist', :default => false
+    o.string '--config', 'Config file location'
+    o.string '--user', 'IRC \'USER\' for Ident'
+    o.string '--nick', 'IRC nick'
+    o.string '--pass', 'IRC \'PASS\' for Ident'
+    o.string '--realname', 'Realname for \'USER\' Ident'
+    o.string '--nickserv', 'Password for Nickserv'
+    o.array '--files', 'Pass list of files to parse for links', as: Array, delimiter: ':'
+    o.string '--out-dir', 'Output directory to save fiels to', :default => "./"
+    o.bool '--skip-existing', 'Don\' download files that already exist', :default => false
   end
 
   if opts.help?
