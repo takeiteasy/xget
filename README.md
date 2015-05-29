@@ -4,7 +4,8 @@ xget is a simple IRC client/bot that downloads files from XDCC servers,<br/>
 xget also supports DCC RESUME, so if the connection is cut off, you can continue easily.</br>
 Pass the XDCC server, channel, bot and pack as a sort of link and xget does the rest.<br/>
 Links can be passed either through the arguments, or in a file, which is read line by line.<br/>
-Also, if you have mutiple packages from the same bot in a row, use a range, like x..y<br/>
+Also, if you have mutiple packages from the same bot in a row, use a range, like x..y or<br/>
+x..y|interval if you would like to specify a step interval for the range.<br/>
 
 ## Screenshot
 
@@ -25,6 +26,7 @@ Then either chmod +x it, or run it through ruby
 <pre>
 xget irc.rizon.net/#news/ginpachi-sensei/1
 xget irc.rizon.net/#news/ginpachi-sensei/41..46
+xget irc.rizon.net/#news/ginpachi-sensei/41..46|2
 </pre>
 
 You may also benefit from making a config file, see .xget.conf for a simple<br/>

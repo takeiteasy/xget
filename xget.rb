@@ -429,21 +429,23 @@ if __FILE__ == $0 then
   # Parse to_check array for valid XDCC links, irc.serv.org/#chan/bot/pack
   tmp_requests, tmp_range = [], []
   to_check.each do |x|
-    if x =~ /^(\w+?).(\w+?).(\w+?)\/#(\S+)\/(\S+)\/(\d+)(..\d+)?$/
+    if x =~ /^(\w+?).(\w+?).(\w+?)\/#(\S+)\/(\S+)\/(\d+)(..\d+(\|\d+)?)?$/
       serv = [$1, $2, $3].join(".")
       info = (config["servers"].has_key?(serv) ? serv : "*")
       chan = "##{$4}"
       bot  = $5
       pack = $6.to_i
-      unless $7.nil?
-        to_range = $7[2..-1].to_i # Clip off the ".."
+      if $7.nil?
+        tmp_requests.push XDCC_REQ.new serv, chan, bot, pack, info
+      else
+        step = $8.nil? ? 1 : $8[1..-1].to_i
+        to_range = $7[2..-1].gsub(/(\|\d+)?$/, '').to_i # Clip off the ".." and the interval if present
         if pack > to_range or pack == to_range
           puts_error "Invalid range #{pack} to #{to_range} in \"#{x}\""
           next
         end
-        tmp_range =* (pack + 1)..to_range
+        tmp_range =* (pack..to_range).step(step)
       end
-      tmp_requests.push XDCC_REQ.new serv, chan, bot, pack, info
 
       # Convert range array to new requests
       unless tmp_range.empty?
