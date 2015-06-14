@@ -22,9 +22,12 @@ $ver_maj, $ver_min, $ver_rev = 2, 0, 0
 $ver_str = "#{$ver_maj}.#{$ver_min}.#{$ver_rev}"
 
 config = {
-  "out-dir"       => './',
-  "skip-existing" => false,
-  "servers"       => {} }
+  "out-dir"        => './',
+  "skip-existing"  => false,
+  "servers"        => {},
+  "sleep-interval" => 5,
+  "allow-queueing" => false
+}
 
 def puts_error msg
   puts "! \e[31mERROR\e[0m: #{msg}"
@@ -319,24 +322,26 @@ rescue EOFError, SocketError => e
 end
 
 if __FILE__ == $0 then
-  opts = Slop.parse! do
-    banner " Usage: #{$0} [options] [value] [links] [--files] [file1:file2:file3]\n"
-    on :help, :ignore_case => true
+  opts = Slop.parse do |o|
+    o.banner = " Usage: #{$0} [options] [value] [links] [--files] [file1:file2:file3]\n"
+    o.bool '-h', '--help', 'Prints help'
 
-    on 'v', 'version', 'Print version' do
+    o.on '-v', '--version', 'Print version' do
       puts "#{$0}: v#{$ver_str}"
       exit
     end
 
-    on 'config=',       'Config file location'
-    on 'user=',         'IRC \'USER\' for Ident'
-    on 'nick=',         'IRC nick'
-    on 'pass=',         'IRC \'PASS\' for Ident'
-    on 'realname=',     'Realname for \'USER\' Ident'
-    on 'nickserv=',     'Password for Nickserv'
-    on 'files=',        'Pass list of files to parse for links',   as: Array, delimiter: ':'
-    on 'out-dir=',      'Output directory to save fiels to',       :default => "./"
-    on 'skip-existing', 'Don\' download files that already exist', :default => false
+    o.string '--config', 'Config file location'
+    o.string '--user', 'IRC \'USER\' for Ident'
+    o.string '--nick', 'IRC nick'
+    o.string '--pass', 'IRC \'PASS\' for Ident'
+    o.string '--realname', 'Realname for \'USER\' Ident'
+    o.string '--nickserv', 'Password for Nickserv'
+    o.array '--files', 'Pass list of files to parse for links', as: Array, delimiter: ':'
+    o.string '--out-dir', 'Output directory to save fiels to', :default => "./"
+    o.bool '--skip-existing', 'Don\' download files that already exist'
+    o.bool '--allow-queueing', 'Wait for pack to start downloading rather than fail immediately when queued'
+    o.int '--sleep-interval', 'Time in seconds to sleep before requesting next pack. Zero for no sleep.'
   end
 
   if opts.help?
@@ -397,7 +402,9 @@ if __FILE__ == $0 then
         config[$1] = t_out_dir
         config[$1] << "/" unless config[$1][-1] == "/"
         next
+      when "sleep-interval" then config[$1] = $2.to_i
       when "skip-existing" then config[$1] = ($2 == "true")
+      when "allow-queueing" then config[$1] = ($2 == "true")
       else
         # Add value to current header, default is *
         t_sym = $1.downcase.to_sym
@@ -412,6 +419,11 @@ if __FILE__ == $0 then
       v.each { |x| config["servers"][x] = config["servers"][k] }
     end
   end
+
+  # Set the set the command line config options if specified
+  config["skip-existing"] = opts["skip-existing"] if opts["skip-existing"]
+  config["allow-queueing"] = opts["allow-queueing"] if opts["allow-queueing"]
+  config["sleep-interval"] = opts["sleep-interval"] unless opts["sleep-interval"].nil?
 
   # Take remaining arguments and all lines from --files arg and put into array
   to_check = ($*)
@@ -429,25 +441,27 @@ if __FILE__ == $0 then
   # Parse to_check array for valid XDCC links, irc.serv.org/#chan/bot/pack
   tmp_requests, tmp_range = [], []
   to_check.each do |x|
-    if x =~ /^(\w+?).(\w+?).(\w+?)\/#(\S+)\/(\S+)\/(\d+)(..\d+)?$/
+    if x =~ /^(\w+?).(\w+?).(\w+?)\/#(\S+)\/(\S+)\/(\d+)(..\d+(\|\d+)?)?$/
       serv = [$1, $2, $3].join(".")
       info = (config["servers"].has_key?(serv) ? serv : "*")
       chan = "##{$4}"
       bot  = $5
       pack = $6.to_i
-      unless $7.nil?
-        to_range = $7[2..-1].to_i # Clip off the ".."
+      if $7.nil?
+        tmp_requests.push XDCC_REQ.new serv, chan, bot, pack, info
+      else
+        step = $8.nil? ? 1 : $8[1..-1].to_i
+        to_range = $7[2..-1].gsub(/(\|\d+)?$/, '').to_i # Clip off the ".." and the interval if present
         if pack > to_range or pack == to_range
           puts_error "Invalid range #{pack} to #{to_range} in \"#{x}\""
           next
         end
-        tmp_range =* (pack + 1)..to_range
+        tmp_range =* (pack..to_range).step(step)
       end
-      tmp_requests.push XDCC_REQ.new serv, chan, bot, pack, info
 
       # Convert range array to new requests
       unless tmp_range.empty?
-        rmp_range.each { |y| tmp_requests.push XDCC_REQ.new serv, chan, bot, y, info }
+        tmp_range.each { |y| tmp_requests.push XDCC_REQ.new serv, chan, bot, y, info }
         tmp_range.clear
       end
     else
@@ -492,7 +506,7 @@ if __FILE__ == $0 then
     last_chan, cur_req, motd = "", -1, false
     nick_sent, nick_check, nick_valid = false, false, false
 
-    xdcc_sent, xdcc_accepted = false, false
+    xdcc_sent, xdcc_accepted, xdcc_queued = false, false, false
     xdcc_accept_time, xdcc_ret, req_send_time = nil, nil, nil
 
 
@@ -533,10 +547,20 @@ if __FILE__ == $0 then
             puts "> \e[1;33m#{msg}\e[0m"
           elsif prefix =~ /^#{Regexp.escape req.bot}!(.*)$/i
             case msg
-            when /already requested that pack/i, /closing connection/i, /you have a dcc pending/i, /you can only have (\d+?) transfer at a time/i
+            when /already requested that pack/i, /closing connection/i, /you have a dcc pending/i
               puts_error msg
               stream << "PRIVMSG #{req.bot} :XDCC CANCEL"
               stream << 'QUIT'
+            when /you can only have (\d+?) transfer at a time/i
+              if config["allow-queueing"]
+                puts "! #{prefix}: #{msg}"
+                puts_warning "Pack queued, waiting for transfer to start..."
+                xdcc_queued = true
+              else
+                puts_error msg
+                stream << "PRIVMSG #{req.bot} :XDCC CANCEL"
+                stream << 'QUIT'
+              end
             else
               puts "! #{prefix}: #{msg}"
             end
@@ -565,7 +589,7 @@ if __FILE__ == $0 then
                 puts_warning "File already exists, skipping..."
                 stream << "PRIVMSG #{req.bot} :XDCC CANCEL"
 
-                xdcc_sent, xdcc_accepted = false, false
+                xdcc_sent, xdcc_accepted, xdcc_queued = false, false, false
                 xdcc_accept_time, xdcc_ret = nil, nil
                 next
               else
@@ -582,7 +606,7 @@ if __FILE__ == $0 then
               end
 
               Process.wait pid
-              xdcc_sent, xdcc_accepted = false, false
+              xdcc_sent, xdcc_accepted, xdcc_queued = false, false, false
               xdcc_accept_time, xdcc_ret = nil, nil
             end
           end
@@ -599,7 +623,7 @@ if __FILE__ == $0 then
             end
 
             Process.wait pid
-            xdcc_sent, xdcc_accepted = false, false
+            xdcc_sent, xdcc_accepted, xdcc_queued = false, false, false
             xdcc_accept_time, xdcc_ret = nil, nil
           end
         end
@@ -637,7 +661,12 @@ if __FILE__ == $0 then
             stream   << "JOIN #{req.chan}"
           end
 
-          sleep 1 unless cur_req == 0 # Cooldown between downloads
+          # Cooldown between downloads
+          if cur_req > 0
+            puts "Sleeping for #{config["sleep-interval"]} seconds before requesting the next pack"
+            sleep(config["sleep-interval"])
+          end
+
           stream << "PRIVMSG #{req.bot} :XDCC SEND #{req.pack}"
           req_send_time = Time.now
           xdcc_sent = true
@@ -645,6 +674,9 @@ if __FILE__ == $0 then
 
         # Wait 3 seconds for DCC SEND response, if there isn't one, abort
         if xdcc_sent and not req_send_time.nil? and not xdcc_accepted
+          if config["allow-queueing"] and xdcc_queued
+            next
+          end
           if (Time.now - req_send_time).floor > 3
             puts_error "#{req.bot} took too long to respond, are you sure it's a bot?"
             stream.disconnect
