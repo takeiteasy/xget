@@ -18,7 +18,7 @@ Thread.abort_on_exception = true
 $stdout.sync = true
 
 # Version values
-$ver_maj, $ver_min, $ver_rev = 2, 0, 0
+$ver_maj, $ver_min, $ver_rev = 2, 1, 0
 $ver_str = "#{$ver_maj}.#{$ver_min}.#{$ver_rev}"
 
 config = {
@@ -268,7 +268,7 @@ end
 
 # DCC download handler
 def dcc_download ip, port, fname, fsize, read = 0
-  sock = nil 
+  sock = nil
   begin
     timeout(5) { sock = TCPSocket.new ip, port }
   rescue Timeout::Error
@@ -331,17 +331,17 @@ if __FILE__ == $0 then
       exit
     end
 
-    o.string '--config', 'Config file location'
-    o.string '--user', 'IRC \'USER\' for Ident'
-    o.string '--nick', 'IRC nick'
-    o.string '--pass', 'IRC \'PASS\' for Ident'
-    o.string '--realname', 'Realname for \'USER\' Ident'
-    o.string '--nickserv', 'Password for Nickserv'
-    o.array '--files', 'Pass list of files to parse for links', as: Array, delimiter: ':'
-    o.string '--out-dir', 'Output directory to save fiels to', :default => "./"
-    o.bool '--skip-existing', 'Don\' download files that already exist'
-    o.bool '--allow-queueing', 'Wait for pack to start downloading rather than fail immediately when queued'
-    o.int '--sleep-interval', 'Time in seconds to sleep before requesting next pack. Zero for no sleep.'
+    o.string '--config',         'Config file location'
+    o.string '--user',           'IRC \'USER\' for Ident'
+    o.string '--nick',           'IRC nick'
+    o.string '--pass',           'IRC \'PASS\' for Ident'
+    o.string '--realname',       'Realname for \'USER\' Ident'
+    o.string '--nickserv',       'Password for Nickserv'
+    o.array  '--files',          'Pass list of files to parse for links', as: Array, delimiter: ':'
+    o.string '--out-dir',        'Output directory to save fiels to', :default => "./"
+    o.bool   '--skip-existing',  'Don\' download files that already exist'
+    o.bool   '--allow-queueing', 'Wait for pack to start downloading rather than fail immediately when queued'
+    o.int    '--sleep-interval', 'Time in seconds to sleep before requesting next pack. Zero for no sleep.'
   end
 
   if opts.help?
@@ -355,10 +355,15 @@ if __FILE__ == $0 then
   end
 
   # Get the config location
-  config_loc = opts["config"]
+  config_loc = File.expand_path opts["config"]
   if config_loc.nil? or not File.exists? config_loc
     config_loc = File.expand_path "~/.xget.conf"
     config_loc = ".xget.conf" unless File.exists? config_loc
+
+    unless File.exists? config_loc
+      puts "ERROR! Invalid config path '#{config_loc}''. Exiting!"
+      exit
+    end
   end
 
   # Insert config settings from arguments into config hash
@@ -447,6 +452,7 @@ if __FILE__ == $0 then
       chan = "##{$4}"
       bot  = $5
       pack = $6.to_i
+
       if $7.nil?
         tmp_requests.push XDCC_REQ.new serv, chan, bot, pack, info
       else
@@ -508,7 +514,6 @@ if __FILE__ == $0 then
 
     xdcc_sent, xdcc_accepted, xdcc_queued = false, false, false
     xdcc_accept_time, xdcc_ret, req_send_time = nil, nil, nil
-
 
     stream  = Stream.new req.serv
     bot     = Bot.new stream
@@ -704,4 +709,3 @@ if __FILE__ == $0 then
     bot.start
   end
 end
-
