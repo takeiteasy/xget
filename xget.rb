@@ -355,7 +355,8 @@ if __FILE__ == $0 then
   end
 
   # Get the config location
-  config_loc = File.expand_path opts["config"]
+  config_loc  = opts["config"]
+  config_loc  = File.expand_path config_loc unless config_loc.nil?
   if config_loc.nil? or not File.exists? config_loc
     config_loc = File.expand_path "~/.xget.conf"
     config_loc = ".xget.conf" unless File.exists? config_loc
