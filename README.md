@@ -18,10 +18,8 @@ the argument parsing.<br/>
 If you're on Windows, you'll need win32console. Please note, I haven't tested on Windows
 
 <pre>
-gem install slop win32console
+gem install xget slop win32console
 </pre>
-
-Then either chmod +x it, or run it through ruby
 
 <pre>
 xget irc.rizon.net/#news/ginpachi-sensei/1
