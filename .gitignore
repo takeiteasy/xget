@@ -1,5 +1,4 @@
 .*.*.swp
 *.swp
 .DS_Store
-xget_new.rb
-.idea/
+xget*.gem
