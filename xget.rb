@@ -126,7 +126,7 @@ class Stream
 
   def initialize serv
     @buf = []
-    timeout(5) { @io  = TCPSocket.new serv, 6667 }
+    Timeout.timeout(5) { @io  = TCPSocket.new serv, 6667 }
   rescue SocketError => e
     puts_abort "Failed to connect to #{serv}! #{e.message}"
   rescue Timeout::Error
@@ -270,7 +270,7 @@ end
 def dcc_download ip, port, fname, fsize, read = 0
   sock = nil
   begin
-    timeout(5) { sock = TCPSocket.new ip, port }
+    Timeout.timeout(5) { sock = TCPSocket.new ip, port }
   rescue Timeout::Error
     puts_abort "Connection to #{ip} timed out!"
   end
@@ -438,7 +438,7 @@ if __FILE__ == $0 then
       File.open(x, "r").each_line { |y| to_check << y.chomp } if File.exists? x
     end
   end
-
+  
   if to_check.empty?
     puts opts
     abort "\n No jobs, nothing to do!"
@@ -639,8 +639,8 @@ if __FILE__ == $0 then
         when 1 # Print welcome message, because it's nice
           msg.sub!(/#{Regexp.escape info[:nick]}/, "\e[34m#{info[:nick]}\e[0m")
           puts "! #{msg}"
-        when 400..533 # Handle errors, except 439
-          next if type_i == 439 # Skip 439
+        when 400..533 # Handle errors, except a few
+          next if [439, 462, 477].include? type_i
           puts_error "#{msg}"
           stream.disconnect
         when 376 then motd = true # Mark the end of the MOTD
