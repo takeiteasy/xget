@@ -18,7 +18,7 @@ the argument parsing.<br/>
 If you're on Windows, you'll need win32console. Please note, I haven't tested on Windows
 
 <pre>
-gem install xget slop win32console
+gem install slop win32console
 </pre>
 
 <pre>
