@@ -22,8 +22,8 @@ gem install slop win32console
 </pre>
 
 <pre>
-xget irc.rizon.net/#news/ginpachi-sensei/1
-xget irc.rizon.net/#news/ginpachi-sensei/41..46
+xget #news@irc.rizon.net/ginpachi-sensei/1
+xget #news@irc.rizon.net/ginpachi-sensei/41..46
 xget irc.rizon.net/#news/ginpachi-sensei/41..46|2
 </pre>
 
@@ -59,4 +59,3 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 </pre>
-

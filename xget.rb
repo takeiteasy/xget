@@ -349,8 +349,8 @@ if __FILE__ == $0 then
     puts "\n Examples"
     puts " \txget.rb --config config.conf --nick test"
     puts " \txget.rb --files test1.txt:test2.txt:test3.txt"
-    puts " \txget.rb irc.rizon.net/#news/ginpachi-sensei/1"
-    puts " \txget.rb irc.rizon.net/#news/ginpachi-sensei/41..46"
+    puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/1"
+    puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/41..46"
     exit
   end
 
@@ -438,7 +438,7 @@ if __FILE__ == $0 then
       File.open(x, "r").each_line { |y| to_check << y.chomp } if File.exists? x
     end
   end
-  
+
   if to_check.empty?
     puts opts
     abort "\n No jobs, nothing to do!"
@@ -447,10 +447,10 @@ if __FILE__ == $0 then
   # Parse to_check array for valid XDCC links, irc.serv.org/#chan/bot/pack
   tmp_requests, tmp_range = [], []
   to_check.each do |x|
-    if x =~ /^(\w+?).(\w+?).(\w+?)\/#(\S+)\/(\S+)\/(\d+)(..\d+(\|\d+)?)?$/
-      serv = [$1, $2, $3].join(".")
+    if x =~ /^#(\S+)@(\w+?).(\w+?).(\w+?)\/(\S+)\/(\d+)(..\d+(\|\d+)?)?$/
+      serv = [$2, $3, $4].join(".")
       info = (config["servers"].has_key?(serv) ? serv : "*")
-      chan = "##{$4}"
+      chan = "##{$1}"
       bot  = $5
       pack = $6.to_i
 
@@ -683,7 +683,7 @@ if __FILE__ == $0 then
           if config["allow-queueing"] and xdcc_queued
             next
           end
-          if (Time.now - req_send_time).floor > 3
+          if (Time.now - req_send_time).floor > 10
             puts_error "#{req.bot} took too long to respond, are you sure it's a bot?"
             stream.disconnect
             bot.stop
@@ -692,7 +692,7 @@ if __FILE__ == $0 then
 
         # Wait 3 seconds for a DCC ACCEPT response, if there isn't one, don't resume
         if xdcc_sent and xdcc_accepted and not xdcc_accept_time.nil?
-          if (Time.now - xdcc_accept_time).floor > 3
+          if (Time.now - xdcc_accept_time).floor > 10
             puts "FAILED! Bot client doesn't support resume!"
             puts "Connecting to: #{req.bot} @ #{xdcc_ret.ip}:#{xdcc_ret.port}"
             dcc_download xdcc_ret.ip, xdcc_ret.port, xdcc_ret.fname, xdcc_ret.fsize
