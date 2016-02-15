@@ -24,7 +24,7 @@ gem install slop win32console
 <pre>
 xget #news@irc.rizon.net/ginpachi-sensei/1
 xget #news@irc.rizon.net/ginpachi-sensei/41..46
-xget irc.rizon.net/#news/ginpachi-sensei/41..46|2
+xget #news@irc.rizon.net/ginpachi-sensei/41..46|2
 </pre>
 
 You may also benefit from making a config file, see .xget.conf for a simple<br/>
