@@ -534,7 +534,7 @@ if __FILE__ == $0 then
             puts_error 'Login failed'
             stream.disconnect
           end
-          puts "> \e[1;32m#{msg}\e[0m"
+          #puts "> \e[1;32m#{msg}\e[0m"
         else
           if prefix =~ /^NickServ!/
             if not nick_sent and info[:nserv] != nil
@@ -550,7 +550,7 @@ if __FILE__ == $0 then
                 nick_check = true
               end
             end
-            puts "> \e[1;33m#{msg}\e[0m"
+            #puts "> \e[1;33m#{msg}\e[0m"
           elsif prefix =~ /^#{Regexp.escape req.bot}!(.*)$/i
             case msg
             when /already requested that pack/i, /closing connection/i, /you have a dcc pending/i
@@ -636,9 +636,9 @@ if __FILE__ == $0 then
       when /^\d+?$/
         type_i = type.to_i
         case type_i
-        when 1 # Print welcome message, because it's nice
-          msg.sub!(/#{Regexp.escape info[:nick]}/, "\e[34m#{info[:nick]}\e[0m")
-          puts "! #{msg}"
+        # when 1 # Print welcome message, because it's nice
+        #   msg.sub!(/#{Regexp.escape info[:nick]}/, "\e[34m#{info[:nick]}\e[0m")
+        #   puts "! #{msg}"
         when 400..533 # Handle errors, except a few
           next if [439, 462, 477].include? type_i
           puts_error "#{msg}"
