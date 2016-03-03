@@ -18,7 +18,7 @@ Thread.abort_on_exception = true
 $stdout.sync = true
 
 # Version values
-$ver_maj, $ver_min, $ver_rev = 2, 1, 0
+$ver_maj, $ver_min, $ver_rev = 2, 1, 1
 $ver_str = "#{$ver_maj}.#{$ver_min}.#{$ver_rev}"
 
 config = {
@@ -351,6 +351,8 @@ if __FILE__ == $0 then
     puts " \txget.rb --files test1.txt:test2.txt:test3.txt"
     puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/1"
     puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/41..46"
+    puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/41..46|2"
+    puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/41..46&49..52|2&30"
     exit
   end
 
@@ -445,34 +447,32 @@ if __FILE__ == $0 then
   end
 
   # Parse to_check array for valid XDCC links, irc.serv.org/#chan/bot/pack
-  tmp_requests, tmp_range = [], []
+  tmp_requests = []
   to_check.each do |x|
-    if x =~ /^#(\S+)@(\w+?).(\w+?).(\w+?)\/(\S+)\/(\d+)(..\d+(\|\d+)?)?$/
-      serv = [$2, $3, $4].join(".")
-      info = (config["servers"].has_key?(serv) ? serv : "*")
-      chan = "##{$1}"
-      bot  = $5
-      pack = $6.to_i
+    if x =~ /^#(\S+)@(irc.\w+.\w+{2,3})\/(\S+)\/([\.&\|\d]+)$/
+      chan  = $1
+      serv  = $2
+      bot   = $3
+      info  = config["servers"].has_key?(serv) ? serv : "*"
+      $4.split('&').each do |y|
+        if y =~ /^(\d+)(\.\.\d+(\|\d+)?)?$/
+          pack = $1.to_i
+          if $2.nil?
+            tmp_requests.push XDCC_REQ.new serv, chan, bot, pack, info
+          else
+            step  = $3.nil? ? 1 : $3[1..-1].to_i
+            range = $2[2..-1].to_i
 
-      if $7.nil?
-        tmp_requests.push XDCC_REQ.new serv, chan, bot, pack, info
-      else
-        step = $8.nil? ? 1 : $8[1..-1].to_i
-        to_range = $7[2..-1].gsub(/(\|\d+)?$/, '').to_i # Clip off the ".." and the interval if present
-        if pack > to_range or pack == to_range
-          puts_error "Invalid range #{pack} to #{to_range} in \"#{x}\""
-          next
+            puts_abort "Invalid range #{pack} to #{range} in \"#{x}\"" if pack > range or pack == range
+
+            (pack..range).step(step).each do |z|
+              tmp_requests.push XDCC_REQ.new serv, chan, bot, z, info
+            end
+          end
         end
-        tmp_range =* (pack..to_range).step(step)
-      end
-
-      # Convert range array to new requests
-      unless tmp_range.empty?
-        tmp_range.each { |y| tmp_requests.push XDCC_REQ.new serv, chan, bot, y, info }
-        tmp_range.clear
       end
     else
-      puts_abort "#{x} is not a valid XDCC address\n XDCC Address format: irc.serv.com/#chan/bot/pack"
+      puts_abort "#{x} is not a valid XDCC address\n XDCC Address format: #chan@irc.serv.com/bot/pack(s)"
     end
   end
 
@@ -503,7 +503,7 @@ if __FILE__ == $0 then
   # Sort requests by pack
   requests.each do |k,v|
     puts "#{k} \e[1;37m->\e[0m"
-    v = v.sort_by { |x| [x.chan, x.pack] }.each { |x| puts "\t#{x}" }
+    v = v.sort_by { |x| [x.chan, x.bot, x.pack] }.each { |x| puts "  #{x}" }
   end
   puts
 

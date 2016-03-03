@@ -6,6 +6,7 @@ Pass the XDCC server, channel, bot and pack as a sort of link and xget does the 
 Links can be passed either through the arguments, or in a file, which is read line by line.<br/>
 Also, if you have mutiple packages from the same bot in a row, use a range, like x..y or<br/>
 x..y|interval if you would like to specify a step interval for the range.<br/>
+You can add multiple ranges, with steps: x..y|interval&x..y&x&x..y|interval
 
 ## Screenshot
 
@@ -25,6 +26,7 @@ gem install slop win32console
 xget #news@irc.rizon.net/ginpachi-sensei/1
 xget #news@irc.rizon.net/ginpachi-sensei/41..46
 xget #news@irc.rizon.net/ginpachi-sensei/41..46|2
+xget #news@irc.rizon.net/ginpachi-sensei/41..46&49..52|2&30
 </pre>
 
 You may also benefit from making a config file, see .xget.conf for a simple<br/>
