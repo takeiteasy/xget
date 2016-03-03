@@ -92,8 +92,8 @@ class XDCC_SEND
   def initialize fname, fsize, ip, port
     @fname = fname
     @fsize = fsize
-    @ip = ip
-    @port = port
+    @ip    = ip
+    @port  = port
   end
 
   def to_s
@@ -214,9 +214,9 @@ end
 def time_distance t
   if t < 60
     case t
-    when 0 then "- nevermind, done!"
-    when 1..4 then "in a moment!"
-    when 5..9 then "less than 10 seconds"
+    when 0      then "- nevermind, done!"
+    when 1..4   then "in a moment!"
+    when 5..9   then "less than 10 seconds"
     when 10..19 then "less than 20 seconds"
     when 20..39 then "half a minute"
     else "less than a minute"
@@ -224,11 +224,11 @@ def time_distance t
   else # Use minutes, to aovid big numbers
     t = t / 60.0
     case t.to_i
-    when 1 then "about a minute"
-    when 2..45 then "#{t.round} minutes"
-    when 45..90 then "about an hour"
-    when 91..1440 then "about #{(t / 60.0).round} hours"
-    when 1441..2520 then "about a day"
+    when 1           then "about a minute"
+    when 2..45       then "#{t.round} minutes"
+    when 45..90      then "about an hour"
+    when 91..1440    then "about #{(t / 60.0).round} hours"
+    when 1441..2520  then "about a day"
     when 2521..86400 then "about #{(t / 1440.0).round} days"
     else "about #{(t/ 43200.0).round} months"
     end
@@ -253,9 +253,9 @@ def time_elapsed t
   end
 
   # Unit suffixes
-  suffix = [ "seconds", "minutes", "hours", "days", "months", "years" ];
+  suffix     = [ "seconds", "minutes", "hours", "days", "months", "years" ]
   # Don't use plural if x is 1
-  plural = ->(x, y) { x == 1 ? y[0..-2] : y }
+  plural     = ->(x, y) { x == 1 ? y[0..-2] : y }
   # Format string to "value unit"
   format_str = ->(x) { "#{ta[x]} #{plural[ta[x], suffix[x]]}, " }
 
@@ -283,7 +283,7 @@ def dcc_download ip, port, fname, fsize, read = 0
   # Form the status bar
   print_bar = ->() {
     print "\r\e[0K> [ \e[1;37m"
-    pc = read.to_f / fsize.to_f * 100.0
+    pc   = read.to_f / fsize.to_f * 100.0
     bars = (pc / 10).to_i
     bars.times { print "#" }
     (10 - bars).times { print " " }
@@ -411,7 +411,7 @@ if __FILE__ == $0 then
         config[$1] << "/" unless config[$1][-1] == "/"
         next
       when "sleep-interval" then config[$1] = $2.to_i
-      when "skip-existing" then config[$1] = ($2 == "true")
+      when "skip-existing"  then config[$1] = ($2 == "true")
       when "allow-queueing" then config[$1] = ($2 == "true")
       else
         # Add value to current header, default is *
@@ -449,7 +449,7 @@ if __FILE__ == $0 then
   # Parse to_check array for valid XDCC links, irc.serv.org/#chan/bot/pack
   tmp_requests = []
   to_check.each do |x|
-    if x =~ /^#(\S+)@(irc.\w+.\w+{2,3})\/(\S+)\/([\.&\|\d]+)$/
+    if x =~ /^(#\S+)@(irc.\w+.\w+{2,3})\/(\S+)\/([\.&\|\d]+)$/
       chan  = $1
       serv  = $2
       bot   = $3
@@ -503,17 +503,17 @@ if __FILE__ == $0 then
   # Sort requests by pack
   requests.each do |k,v|
     puts "#{k} \e[1;37m->\e[0m"
-    v = v.sort_by { |x| [x.chan, x.bot, x.pack] }.each { |x| puts "  #{x}" }
+    v.sort_by { |x| [x.chan, x.bot, x.pack] }.each { |x| puts "  #{x}" }
   end
   puts
+  exit
 
   # H-h-here we g-go...
   requests.each do |k, v|
     req, info = v[0], config["servers"][v[0].info]
-    last_chan, cur_req, motd = "", -1, false
-    nick_sent, nick_check, nick_valid = false, false, false
-
-    xdcc_sent, xdcc_accepted, xdcc_queued = false, false, false
+    last_chan, cur_req, motd                  = "", -1, false
+    nick_sent, nick_check, nick_valid         = false, false, false
+    xdcc_sent, xdcc_accepted, xdcc_queued     = false, false, false
     xdcc_accept_time, xdcc_ret, req_send_time = nil, nil, nil
 
     stream  = Stream.new req.serv
@@ -579,10 +579,10 @@ if __FILE__ == $0 then
             req_send_time = nil
 
             tmp_fname = fname
-            fname = $1 if tmp_fname =~ /^"(.*)"$/
+            fname     = $1 if tmp_fname =~ /^"(.*)"$/
             puts "Preparing to download: \e[36m#{fname}\e[0m"
-            fname = (config["out-dir"].dup << fname)
-            xdcc_ret = XDCC_SEND.new fname, fsize.to_i, [ip.to_i].pack('N').unpack('C4') * '.', port.to_i
+            fname     = (config["out-dir"].dup << fname)
+            xdcc_ret  = XDCC_SEND.new fname, fsize.to_i, [ip.to_i].pack('N').unpack('C4') * '.', port.to_i
 
             # Check if the for unfinished download amd try to resume
             if File.exists? xdcc_ret.fname and File.stat(xdcc_ret.fname).size < xdcc_ret.fsize
@@ -630,7 +630,7 @@ if __FILE__ == $0 then
 
             Process.wait pid
             xdcc_sent, xdcc_accepted, xdcc_queued = false, false, false
-            xdcc_accept_time, xdcc_ret = nil, nil
+            xdcc_accept_time, xdcc_ret            = nil, nil
           end
         end
       when /^\d+?$/
@@ -675,7 +675,7 @@ if __FILE__ == $0 then
 
           stream << "PRIVMSG #{req.bot} :XDCC SEND #{req.pack}"
           req_send_time = Time.now
-          xdcc_sent = true
+          xdcc_sent     = true
         end
 
         # Wait 3 seconds for DCC SEND response, if there isn't one, abort
