@@ -506,7 +506,6 @@ if __FILE__ == $0 then
     v.sort_by { |x| [x.chan, x.bot, x.pack] }.each { |x| puts "  #{x}" }
   end
   puts
-  exit
 
   # H-h-here we g-go...
   requests.each do |k, v|
