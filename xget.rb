@@ -321,391 +321,389 @@ rescue EOFError, SocketError => e
   puts "\n! ERROR: #{File.basename fname} failed to download! #{e}"
 end
 
-if __FILE__ == $0 then
-  opts = Slop.parse do |o|
-    o.banner = " Usage: #{$0} [options] [value] [links] [--files] [file1:file2:file3]\n"
-    o.bool '-h', '--help', 'Prints help'
+opts = Slop.parse do |o|
+  o.banner = " Usage: #{$0} [options] [value] [links] [--files] [file1:file2:file3]\n"
+  o.bool '-h', '--help', 'Prints help'
 
-    o.on '-v', '--version', 'Print version' do
-      puts "#{$0}: v#{$ver_str}"
-      exit
-    end
-
-    o.string '--config',         'Config file location'
-    o.string '--user',           'IRC \'USER\' for Ident'
-    o.string '--nick',           'IRC nick'
-    o.string '--pass',           'IRC \'PASS\' for Ident'
-    o.string '--realname',       'Realname for \'USER\' Ident'
-    o.string '--nickserv',       'Password for Nickserv'
-    o.array  '--files',          'Pass list of files to parse for links', as: Array, delimiter: ':'
-    o.string '--out-dir',        'Output directory to save fiels to', :default => "./"
-    o.bool   '--skip-existing',  'Don\' download files that already exist'
-    o.bool   '--allow-queueing', 'Wait for pack to start downloading rather than fail immediately when queued'
-    o.int    '--sleep-interval', 'Time in seconds to sleep before requesting next pack. Zero for no sleep.'
-  end
-
-  if opts.help?
-    puts opts
-    puts "\n Examples"
-    puts " \txget.rb --config config.conf --nick test"
-    puts " \txget.rb --files test1.txt:test2.txt:test3.txt"
-    puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/1"
-    puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/41..46"
-    puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/41..46|2"
-    puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/41..46&49..52|2&30"
+  o.on '-v', '--version', 'Print version' do
+    puts "#{$0}: v#{$ver_str}"
     exit
   end
 
-  # Get the config location
-  config_loc  = opts["config"]
-  config_loc  = File.expand_path config_loc unless config_loc.nil?
-  if config_loc.nil? or not File.exists? config_loc
-    config_loc = File.expand_path "~/.xget.conf"
-    config_loc = ".xget.conf" unless File.exists? config_loc
+  o.string '--config',         'Config file location'
+  o.string '--user',           'IRC \'USER\' for Ident'
+  o.string '--nick',           'IRC nick'
+  o.string '--pass',           'IRC \'PASS\' for Ident'
+  o.string '--realname',       'Realname for \'USER\' Ident'
+  o.string '--nickserv',       'Password for Nickserv'
+  o.array  '--files',          'Pass list of files to parse for links', as: Array, delimiter: ':'
+  o.string '--out-dir',        'Output directory to save fiels to', :default => "./"
+  o.bool   '--skip-existing',  'Don\' download files that already exist'
+  o.bool   '--allow-queueing', 'Wait for pack to start downloading rather than fail immediately when queued'
+  o.int    '--sleep-interval', 'Time in seconds to sleep before requesting next pack. Zero for no sleep.'
+end
 
-    unless File.exists? config_loc
-      puts "ERROR! Invalid config path '#{config_loc}''. Exiting!"
-      exit
-    end
+if opts.help?
+  puts opts
+  puts "\n Examples"
+  puts " \txget.rb --config config.conf --nick test"
+  puts " \txget.rb --files test1.txt:test2.txt:test3.txt"
+  puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/1"
+  puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/41..46"
+  puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/41..46|2"
+  puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/41..46&49..52|2&30"
+  exit
+end
+
+# Get the config location
+config_loc  = opts["config"]
+config_loc  = File.expand_path config_loc unless config_loc.nil?
+if config_loc.nil? or not File.exists? config_loc
+  config_loc = File.expand_path "~/.xget.conf"
+  config_loc = ".xget.conf" unless File.exists? config_loc
+
+  unless File.exists? config_loc
+    puts "ERROR! Invalid config path '#{config_loc}''. Exiting!"
+    exit
   end
+end
 
-  # Insert config settings from arguments into config hash
-  cur_block = "*"
-  config["servers"][cur_block] = {}
-  %w(user nick pass real nserv).each do |x|
-    config["servers"][cur_block][x.to_sym] = opts[x] unless opts[x].nil?
-  end
+# Insert config settings from arguments into config hash
+cur_block = "*"
+config["servers"][cur_block] = {}
+%w(user nick pass real nserv).each do |x|
+  config["servers"][cur_block][x.to_sym] = opts[x] unless opts[x].nil?
+end
 
-  # Check if specified output directory actually exists
-  puts_abort "Out directory, \"#{opts["out-dir"]}\" doesn't exist!" unless Dir.exists? opts["out-dir"]
-  config["out-dir"] = opts["out-dir"].dup
-  config["out-dir"] << "/" unless config["out-dir"][-1] == "/"
+# Check if specified output directory actually exists
+puts_abort "Out directory, \"#{opts["out-dir"]}\" doesn't exist!" unless Dir.exists? opts["out-dir"]
+config["out-dir"] = opts["out-dir"].dup
+config["out-dir"] << "/" unless config["out-dir"][-1] == "/"
 
-  # Parse config
-  config_copies = {}
-  File.open(config_loc, "r").each_line do |line|
-    next if line.length <= 1 or line[0] == '#'
+# Parse config
+config_copies = {}
+File.open(config_loc, "r").each_line do |line|
+  next if line.length <= 1 or line[0] == '#'
 
-    if line =~ /^\[(\S+)\]$/ # Check if header
-      cur_block = $1
-      if cur_block.include? ',' # Check if header contains more than one server
-        tmp_split = cur_block.split(",")
-        next unless tmp_split[0] =~ /^(\w+?).(\w+?).(\w+?)$/
-        config_copies[tmp_split[0]] = []
-        tmp_split.each do |x| # Add all copies to copies hash
-          next if x == tmp_split[0] or not x =~ /^(\w+?).(\w+?).(\w+?)$/
-          config_copies[tmp_split[0]].push x unless config_copies[tmp_split[0]].include? x
-        end
-        cur_block = tmp_split[0]
+  if line =~ /^\[(\S+)\]$/ # Check if header
+    cur_block = $1
+    if cur_block.include? ',' # Check if header contains more than one server
+      tmp_split = cur_block.split(",")
+      next unless tmp_split[0] =~ /^(\w+?).(\w+?).(\w+?)$/
+      config_copies[tmp_split[0]] = []
+      tmp_split.each do |x| # Add all copies to copies hash
+        next if x == tmp_split[0] or not x =~ /^(\w+?).(\w+?).(\w+?)$/
+        config_copies[tmp_split[0]].push x unless config_copies[tmp_split[0]].include? x
       end
-
-      # Set current block to the new header
-      config["servers"][cur_block] = {} unless config["servers"].has_key? cur_block
-    elsif line =~ /^(\S+)=(.*+?)$/
-      # Check if current line is specifying out directory
-      case $1
-      when "out-dir"
-        t_out_dir = File.expand_path $2
-        puts_abort "Out directory, \"#{t_out_dir}\" doesn't exist!" unless Dir.exists? t_out_dir
-        config[$1] = t_out_dir
-        config[$1] << "/" unless config[$1][-1] == "/"
-        next
-      when "sleep-interval" then config[$1] = $2.to_i
-      when "skip-existing"  then config[$1] = ($2 == "true")
-      when "allow-queueing" then config[$1] = ($2 == "true")
-      else
-        # Add value to current header, default is *
-        t_sym = $1.downcase.to_sym
-        config["servers"][cur_block][t_sym] = $2 unless config["servers"][cur_block].has_key? t_sym
-      end
+      cur_block = tmp_split[0]
     end
-  end
 
-  # Go through each and make copies of the original
-  unless config_copies.empty?
-    config_copies.each do |k,v|
-      v.each { |x| config["servers"][x] = config["servers"][k] }
-    end
-  end
-
-  # Set the set the command line config options if specified
-  config["skip-existing"] = opts["skip-existing"] if opts["skip-existing"]
-  config["allow-queueing"] = opts["allow-queueing"] if opts["allow-queueing"]
-  config["sleep-interval"] = opts["sleep-interval"] unless opts["sleep-interval"].nil?
-
-  # Take remaining arguments and all lines from --files arg and put into array
-  to_check = ($*)
-  if opts['files'] != nil and not opts['files'].empty?
-    opts['files'].each do |x|
-      File.open(x, "r").each_line { |y| to_check << y.chomp } if File.exists? x
-    end
-  end
-
-  if to_check.empty?
-    puts opts
-    abort "\n No jobs, nothing to do!"
-  end
-
-  # Parse to_check array for valid XDCC links, irc.serv.org/#chan/bot/pack
-  tmp_requests = []
-  to_check.each do |x|
-    if x =~ /^(#\S+)@(irc.\w+.\w+{2,3})\/(\S+)\/([\.&\|\d]+)$/
-      chan  = $1
-      serv  = $2
-      bot   = $3
-      info  = config["servers"].has_key?(serv) ? serv : "*"
-      $4.split('&').each do |y|
-        if y =~ /^(\d+)(\.\.\d+(\|\d+)?)?$/
-          pack = $1.to_i
-          if $2.nil?
-            tmp_requests.push XDCC_REQ.new serv, chan, bot, pack, info
-          else
-            step  = $3.nil? ? 1 : $3[1..-1].to_i
-            range = $2[2..-1].to_i
-
-            puts_abort "Invalid range #{pack} to #{range} in \"#{x}\"" if pack > range or pack == range
-
-            (pack..range).step(step).each do |z|
-              tmp_requests.push XDCC_REQ.new serv, chan, bot, z, info
-            end
-          end
-        end
-      end
+    # Set current block to the new header
+    config["servers"][cur_block] = {} unless config["servers"].has_key? cur_block
+  elsif line =~ /^(\S+)=(.*+?)$/
+    # Check if current line is specifying out directory
+    case $1
+    when "out-dir"
+      t_out_dir = File.expand_path $2
+      puts_abort "Out directory, \"#{t_out_dir}\" doesn't exist!" unless Dir.exists? t_out_dir
+      config[$1] = t_out_dir
+      config[$1] << "/" unless config[$1][-1] == "/"
+      next
+    when "sleep-interval" then config[$1] = $2.to_i
+    when "skip-existing"  then config[$1] = ($2 == "true")
+    when "allow-queueing" then config[$1] = ($2 == "true")
     else
-      puts_abort "#{x} is not a valid XDCC address\n XDCC Address format: #chan@irc.serv.com/bot/pack(s)"
+      # Add value to current header, default is *
+      t_sym = $1.downcase.to_sym
+      config["servers"][cur_block][t_sym] = $2 unless config["servers"][cur_block].has_key? t_sym
     end
   end
+end
 
-  # Remove duplicate entries from requests
-  i = j = 0
-  to_pop = []
-  tmp_requests.each do |x|
-    tmp_requests.each do |y|
-      to_pop << j if x.eql? y if i != j
-      j += 1
-    end
-    i += 1
+# Go through each and make copies of the original
+unless config_copies.empty?
+  config_copies.each do |k,v|
+    v.each { |x| config["servers"][x] = config["servers"][k] }
   end
-  to_pop.each { |x| tmp_requests.delete_at(x) }
+end
 
-  # Sort requests array to hash, serv {} -> chan {} -> requests []
-  requests = {}
-  tmp_requests.each do |x|
-    requests[x.serv] = [] unless requests.has_key? x.serv
-    requests[x.serv] << x
+# Set the set the command line config options if specified
+config["skip-existing"] = opts["skip-existing"] if opts["skip-existing"]
+config["allow-queueing"] = opts["allow-queueing"] if opts["allow-queueing"]
+config["sleep-interval"] = opts["sleep-interval"] unless opts["sleep-interval"].nil?
+
+# Take remaining arguments and all lines from --files arg and put into array
+to_check = ($*)
+if opts['files'] != nil and not opts['files'].empty?
+  opts['files'].each do |x|
+    File.open(x, "r").each_line { |y| to_check << y.chomp } if File.exists? x
   end
+end
 
-  if requests.empty?
-    puts opts
-    abort "\n No jobs, nothing to do!"
-  end
+if to_check.empty?
+  puts opts
+  abort "\n No jobs, nothing to do!"
+end
 
-  # Sort requests by pack
-  requests.each do |k,v|
-    puts "#{k} \e[1;37m->\e[0m"
-    v.sort_by { |x| [x.chan, x.bot, x.pack] }.each { |x| puts "  #{x}" }
-  end
-  puts
-
-  # H-h-here we g-go...
-  requests.each do |k, v|
-    req, info = v[0], config["servers"][v[0].info]
-    last_chan, cur_req, motd                  = "", -1, false
-    nick_sent, nick_check, nick_valid         = false, false, false
-    xdcc_sent, xdcc_accepted, xdcc_queued     = false, false, false
-    xdcc_accept_time, xdcc_ret, req_send_time = nil, nil, nil
-
-    stream  = Stream.new req.serv
-    bot     = Bot.new stream
-    stream << "NICK #{info[:nick]}"
-    stream << "USER #{info[:user]} 0 * #{info[:real]}"
-    stream << "PASS #{info[:pass]}" unless info[:pass].nil?
-
-    # Handle read data
-    stream.on :READ do |data|
-      /^(?:[:](?<prefix>\S+) )?(?<type>\S+)(?: (?!:)(?<dest>.+?))?(?: [:](?<msg>.+))?$/ =~ data
-      #puts "\e[1;37m>>\e[0m #{prefix} | #{type} | #{dest} | #{msg}"
-
-      case type
-      when 'NOTICE'
-        if dest == 'AUTH'
-          if msg =~ /erroneous nickname/i
-            puts_error 'Login failed'
-            stream.disconnect
-          end
-          #puts "> \e[1;32m#{msg}\e[0m"
+# Parse to_check array for valid XDCC links, irc.serv.org/#chan/bot/pack
+tmp_requests = []
+to_check.each do |x|
+  if x =~ /^(#\S+)@(irc.\w+.\w+{2,3})\/(\S+)\/([\.&\|\d]+)$/
+    chan  = $1
+    serv  = $2
+    bot   = $3
+    info  = config["servers"].has_key?(serv) ? serv : "*"
+    $4.split('&').each do |y|
+      if y =~ /^(\d+)(\.\.\d+(\|\d+)?)?$/
+        pack = $1.to_i
+        if $2.nil?
+          tmp_requests.push XDCC_REQ.new serv, chan, bot, pack, info
         else
-          if prefix =~ /^NickServ!/
-            if not nick_sent and info[:nserv] != nil
-              stream << "PRIVMSG NickServ :IDENTIFY #{info[:nserv]}"
-              nick_sent = true
-            elsif nick_sent and not nick_check
-              case msg
-              when /password incorrect/i
-                nick_valid = false
-                nick_check = true
-              when /password accepted/i
-                nick_valid = true
-                nick_check = true
-              end
-            end
-            #puts "> \e[1;33m#{msg}\e[0m"
-          elsif prefix =~ /^#{Regexp.escape req.bot}!(.*)$/i
+          step  = $3.nil? ? 1 : $3[1..-1].to_i
+          range = $2[2..-1].to_i
+
+          puts_abort "Invalid range #{pack} to #{range} in \"#{x}\"" if pack > range or pack == range
+
+          (pack..range).step(step).each do |z|
+            tmp_requests.push XDCC_REQ.new serv, chan, bot, z, info
+          end
+        end
+      end
+    end
+  else
+    puts_abort "#{x} is not a valid XDCC address\n XDCC Address format: #chan@irc.serv.com/bot/pack(s)"
+  end
+end
+
+# Remove duplicate entries from requests
+i = j = 0
+to_pop = []
+tmp_requests.each do |x|
+  tmp_requests.each do |y|
+    to_pop << j if x.eql? y if i != j
+    j += 1
+  end
+  i += 1
+end
+to_pop.each { |x| tmp_requests.delete_at(x) }
+
+# Sort requests array to hash, serv {} -> chan {} -> requests []
+requests = {}
+tmp_requests.each do |x|
+  requests[x.serv] = [] unless requests.has_key? x.serv
+  requests[x.serv] << x
+end
+
+if requests.empty?
+  puts opts
+  abort "\n No jobs, nothing to do!"
+end
+
+# Sort requests by pack
+requests.each do |k,v|
+  puts "#{k} \e[1;37m->\e[0m"
+  v.sort_by { |x| [x.chan, x.bot, x.pack] }.each { |x| puts "  #{x}" }
+end
+puts
+
+# H-h-here we g-go...
+requests.each do |k, v|
+  req, info = v[0], config["servers"][v[0].info]
+  last_chan, cur_req, motd                  = "", -1, false
+  nick_sent, nick_check, nick_valid         = false, false, false
+  xdcc_sent, xdcc_accepted, xdcc_queued     = false, false, false
+  xdcc_accept_time, xdcc_ret, req_send_time = nil, nil, nil
+
+  stream  = Stream.new req.serv
+  bot     = Bot.new stream
+  stream << "NICK #{info[:nick]}"
+  stream << "USER #{info[:user]} 0 * #{info[:real]}"
+  stream << "PASS #{info[:pass]}" unless info[:pass].nil?
+
+  # Handle read data
+  stream.on :READ do |data|
+    /^(?:[:](?<prefix>\S+) )?(?<type>\S+)(?: (?!:)(?<dest>.+?))?(?: [:](?<msg>.+))?$/ =~ data
+    #puts "\e[1;37m>>\e[0m #{prefix} | #{type} | #{dest} | #{msg}"
+
+    case type
+    when 'NOTICE'
+      if dest == 'AUTH'
+        if msg =~ /erroneous nickname/i
+          puts_error 'Login failed'
+          stream.disconnect
+        end
+        #puts "> \e[1;32m#{msg}\e[0m"
+      else
+        if prefix =~ /^NickServ!/
+          if not nick_sent and info[:nserv] != nil
+            stream << "PRIVMSG NickServ :IDENTIFY #{info[:nserv]}"
+            nick_sent = true
+          elsif nick_sent and not nick_check
             case msg
-            when /already requested that pack/i, /closing connection/i, /you have a dcc pending/i
+            when /password incorrect/i
+              nick_valid = false
+              nick_check = true
+            when /password accepted/i
+              nick_valid = true
+              nick_check = true
+            end
+          end
+          #puts "> \e[1;33m#{msg}\e[0m"
+        elsif prefix =~ /^#{Regexp.escape req.bot}!(.*)$/i
+          case msg
+          when /already requested that pack/i, /closing connection/i, /you have a dcc pending/i
+            puts_error msg
+            stream << "PRIVMSG #{req.bot} :XDCC CANCEL"
+            stream << 'QUIT'
+          when /you can only have (\d+?) transfer at a time/i
+            if config["allow-queueing"]
+              puts "! #{prefix}: #{msg}"
+              puts_warning "Pack queued, waiting for transfer to start..."
+              xdcc_queued = true
+            else
               puts_error msg
               stream << "PRIVMSG #{req.bot} :XDCC CANCEL"
               stream << 'QUIT'
-            when /you can only have (\d+?) transfer at a time/i
-              if config["allow-queueing"]
-                puts "! #{prefix}: #{msg}"
-                puts_warning "Pack queued, waiting for transfer to start..."
-                xdcc_queued = true
-              else
-                puts_error msg
-                stream << "PRIVMSG #{req.bot} :XDCC CANCEL"
-                stream << 'QUIT'
-              end
-            else
-              puts "! #{prefix}: #{msg}"
             end
+          else
+            puts "! #{prefix}: #{msg}"
           end
         end
-      when 'PRIVMSG'
-        if xdcc_sent and not xdcc_accepted and prefix =~ /#{Regexp.escape req.bot}!(.*)$/i
-          /^\001DCC SEND (?<fname>((".*?").*?|(\S+))) (?<ip>\d+) (?<port>\d+) (?<fsize>\d+)\001\015$/ =~ msg
-          unless $~.nil?
-            req_send_time = nil
+      end
+    when 'PRIVMSG'
+      if xdcc_sent and not xdcc_accepted and prefix =~ /#{Regexp.escape req.bot}!(.*)$/i
+        /^\001DCC SEND (?<fname>((".*?").*?|(\S+))) (?<ip>\d+) (?<port>\d+) (?<fsize>\d+)\001\015$/ =~ msg
+        unless $~.nil?
+          req_send_time = nil
 
-            tmp_fname = fname
-            fname     = $1 if tmp_fname =~ /^"(.*)"$/
-            puts "Preparing to download: \e[36m#{fname}\e[0m"
-            fname     = (config["out-dir"].dup << fname)
-            xdcc_ret  = XDCC_SEND.new fname, fsize.to_i, [ip.to_i].pack('N').unpack('C4') * '.', port.to_i
+          tmp_fname = fname
+          fname     = $1 if tmp_fname =~ /^"(.*)"$/
+          puts "Preparing to download: \e[36m#{fname}\e[0m"
+          fname     = (config["out-dir"].dup << fname)
+          xdcc_ret  = XDCC_SEND.new fname, fsize.to_i, [ip.to_i].pack('N').unpack('C4') * '.', port.to_i
 
-            # Check if the for unfinished download amd try to resume
-            if File.exists? xdcc_ret.fname and File.stat(xdcc_ret.fname).size < xdcc_ret.fsize
-              stream << "PRIVMSG #{req.bot} :\001DCC RESUME #{tmp_fname} #{xdcc_ret.port} #{File.stat(xdcc_ret.fname).size}\001"
-              xdcc_accepted = true
-              print "! Incomplete file detected. Attempting to resume..."
-              next # Skip and wait for "DCC ACCEPT"
-            elsif File.exists? xdcc_ret.fname
-              if config["skip-existing"]
-                puts_warning "File already exists, skipping..."
-                stream << "PRIVMSG #{req.bot} :XDCC CANCEL"
+          # Check if the for unfinished download amd try to resume
+          if File.exists? xdcc_ret.fname and File.stat(xdcc_ret.fname).size < xdcc_ret.fsize
+            stream << "PRIVMSG #{req.bot} :\001DCC RESUME #{tmp_fname} #{xdcc_ret.port} #{File.stat(xdcc_ret.fname).size}\001"
+            xdcc_accepted = true
+            print "! Incomplete file detected. Attempting to resume..."
+            next # Skip and wait for "DCC ACCEPT"
+          elsif File.exists? xdcc_ret.fname
+            if config["skip-existing"]
+              puts_warning "File already exists, skipping..."
+              stream << "PRIVMSG #{req.bot} :XDCC CANCEL"
 
-                xdcc_sent, xdcc_accepted, xdcc_queued = false, false, false
-                xdcc_accept_time, xdcc_ret = nil, nil
-                next
-              else
-                puts_warnings "File already existing, using a safe name..."
-                xdcc_ret.fname = safe_fname xdcc_ret.fname
-              end
-            end
-
-            # It's a new download, start from beginning
-            Thread.new do
-              pid = fork do
-                puts "Connecting to: #{req.bot} @ #{xdcc_ret.ip}:#{xdcc_ret.port}"
-                dcc_download xdcc_ret.ip, xdcc_ret.port, xdcc_ret.fname, xdcc_ret.fsize
-              end
-
-              Process.wait pid
               xdcc_sent, xdcc_accepted, xdcc_queued = false, false, false
               xdcc_accept_time, xdcc_ret = nil, nil
+              next
+            else
+              puts_warnings "File already existing, using a safe name..."
+              xdcc_ret.fname = safe_fname xdcc_ret.fname
             end
           end
-        elsif xdcc_accepted and xdcc_ret != nil and msg =~ /^\001DCC ACCEPT ((".*?").*?|(\S+)) (\d+) (\d+)\001\015$/
-          # DCC RESUME request accepted, continue the download!
-          xdcc_accept_time = nil
-          xdcc_accepted    = false
-          puts "\e[1;32mSUCCESS\e[0m!"
 
+          # It's a new download, start from beginning
           Thread.new do
             pid = fork do
               puts "Connecting to: #{req.bot} @ #{xdcc_ret.ip}:#{xdcc_ret.port}"
-              dcc_download xdcc_ret.ip, xdcc_ret.port, xdcc_ret.fname, xdcc_ret.fsize, File.stat(xdcc_ret.fname).size
+              dcc_download xdcc_ret.ip, xdcc_ret.port, xdcc_ret.fname, xdcc_ret.fsize
             end
 
             Process.wait pid
             xdcc_sent, xdcc_accepted, xdcc_queued = false, false, false
-            xdcc_accept_time, xdcc_ret            = nil, nil
+            xdcc_accept_time, xdcc_ret = nil, nil
           end
         end
-      when /^\d+?$/
-        type_i = type.to_i
-        case type_i
-        # when 1 # Print welcome message, because it's nice
-        #   msg.sub!(/#{Regexp.escape info[:nick]}/, "\e[34m#{info[:nick]}\e[0m")
-        #   puts "! #{msg}"
-        when 400..533 # Handle errors, except a few
-          next if [439, 462, 477].include? type_i
-          puts_error "#{msg}"
-          stream.disconnect
-        when 376 then motd = true # Mark the end of the MOTD
-        end
-      when 'PING'  then stream << "PONG :#{msg}"
-      when 'ERROR' then (msg =~ /closing link/i ? puts(msg) : puts_error(msg))
-      end
-    end
+      elsif xdcc_accepted and xdcc_ret != nil and msg =~ /^\001DCC ACCEPT ((".*?").*?|(\S+)) (\d+) (\d+)\001\015$/
+        # DCC RESUME request accepted, continue the download!
+        xdcc_accept_time = nil
+        xdcc_accepted    = false
+        puts "\e[1;32mSUCCESS\e[0m!"
 
-    # Handle things while waiting for data
-    stream.on :WAITING do
-      unless xdcc_accepted
-        if motd and not xdcc_sent
-          cur_req += 1
-          if cur_req >= v.length
-            stream.disconnect
-            next
-          end
-          req = v[cur_req]
-
-          if req.chan != last_chan
-            stream   << "PART #{last_chan}" unless last_chan == ""
-            last_chan = req.chan
-            stream   << "JOIN #{req.chan}"
-          end
-
-          # Cooldown between downloads
-          if cur_req > 0
-            puts "Sleeping for #{config["sleep-interval"]} seconds before requesting the next pack"
-            sleep(config["sleep-interval"])
-          end
-
-          stream << "PRIVMSG #{req.bot} :XDCC SEND #{req.pack}"
-          req_send_time = Time.now
-          xdcc_sent     = true
-        end
-
-        # Wait 3 seconds for DCC SEND response, if there isn't one, abort
-        if xdcc_sent and not req_send_time.nil? and not xdcc_accepted
-          if config["allow-queueing"] and xdcc_queued
-            next
-          end
-          if (Time.now - req_send_time).floor > 10
-            puts_error "#{req.bot} took too long to respond, are you sure it's a bot?"
-            stream.disconnect
-            bot.stop
-          end
-        end
-
-        # Wait 3 seconds for a DCC ACCEPT response, if there isn't one, don't resume
-        if xdcc_sent and xdcc_accepted and not xdcc_accept_time.nil?
-          if (Time.now - xdcc_accept_time).floor > 10
-            puts "FAILED! Bot client doesn't support resume!"
+        Thread.new do
+          pid = fork do
             puts "Connecting to: #{req.bot} @ #{xdcc_ret.ip}:#{xdcc_ret.port}"
-            dcc_download xdcc_ret.ip, xdcc_ret.port, xdcc_ret.fname, xdcc_ret.fsize
+            dcc_download xdcc_ret.ip, xdcc_ret.port, xdcc_ret.fname, xdcc_ret.fsize, File.stat(xdcc_ret.fname).size
           end
+
+          Process.wait pid
+          xdcc_sent, xdcc_accepted, xdcc_queued = false, false, false
+          xdcc_accept_time, xdcc_ret            = nil, nil
+        end
+      end
+    when /^\d+?$/
+      type_i = type.to_i
+      case type_i
+      # when 1 # Print welcome message, because it's nice
+      #   msg.sub!(/#{Regexp.escape info[:nick]}/, "\e[34m#{info[:nick]}\e[0m")
+      #   puts "! #{msg}"
+      when 400..533 # Handle errors, except a few
+        next if [439, 462, 477].include? type_i
+        puts_error "#{msg}"
+        stream.disconnect
+      when 376 then motd = true # Mark the end of the MOTD
+      end
+    when 'PING'  then stream << "PONG :#{msg}"
+    when 'ERROR' then (msg =~ /closing link/i ? puts(msg) : puts_error(msg))
+    end
+  end
+
+  # Handle things while waiting for data
+  stream.on :WAITING do
+    unless xdcc_accepted
+      if motd and not xdcc_sent
+        cur_req += 1
+        if cur_req >= v.length
+          stream.disconnect
+          next
+        end
+        req = v[cur_req]
+
+        if req.chan != last_chan
+          stream   << "PART #{last_chan}" unless last_chan == ""
+          last_chan = req.chan
+          stream   << "JOIN #{req.chan}"
+        end
+
+        # Cooldown between downloads
+        if cur_req > 0
+          puts "Sleeping for #{config["sleep-interval"]} seconds before requesting the next pack"
+          sleep(config["sleep-interval"])
+        end
+
+        stream << "PRIVMSG #{req.bot} :XDCC SEND #{req.pack}"
+        req_send_time = Time.now
+        xdcc_sent     = true
+      end
+
+      # Wait 3 seconds for DCC SEND response, if there isn't one, abort
+      if xdcc_sent and not req_send_time.nil? and not xdcc_accepted
+        if config["allow-queueing"] and xdcc_queued
+          next
+        end
+        if (Time.now - req_send_time).floor > 10
+          puts_error "#{req.bot} took too long to respond, are you sure it's a bot?"
+          stream.disconnect
+          bot.stop
+        end
+      end
+
+      # Wait 3 seconds for a DCC ACCEPT response, if there isn't one, don't resume
+      if xdcc_sent and xdcc_accepted and not xdcc_accept_time.nil?
+        if (Time.now - xdcc_accept_time).floor > 10
+          puts "FAILED! Bot client doesn't support resume!"
+          puts "Connecting to: #{req.bot} @ #{xdcc_ret.ip}:#{xdcc_ret.port}"
+          dcc_download xdcc_ret.ip, xdcc_ret.port, xdcc_ret.fname, xdcc_ret.fsize
         end
       end
     end
-
-    # Print sent data, for debugging only really
-    stream.on :WROTE do |data|
-      #puts "\e[1;37m<<\e[0m #{data}"
-    end
-
-    # Start the bot
-    bot.start
   end
+
+  # Print sent data, for debugging only really
+  stream.on :WROTE do |data|
+    #puts "\e[1;37m<<\e[0m #{data}"
+  end
+
+  # Start the bot
+  bot.start
 end
