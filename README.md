@@ -12,30 +12,30 @@ You can add multiple ranges, with steps: x..y|interval&x..y&x&x..y|interval
 
 ![screenshot](https://github.com/takeiteasy/xget/raw/master/screen.png)
 
-## Instructions
+## Install
 
 Firstly, xget requires the latest version of Ruby, 2.0.0p0, and also [Slop](https://github.com/leejarvis/slop) for<br/>
 the argument parsing.<br/>
-If you're on Windows, you'll need win32console. Please note, I haven't tested on Windows
-
-<pre>
-gem install slop win32console
-</pre>
-
-<pre>
-xget #news@irc.rizon.net/ginpachi-sensei/1
-xget #news@irc.rizon.net/ginpachi-sensei/41..46
-xget #news@irc.rizon.net/ginpachi-sensei/41..46|2
-xget #news@irc.rizon.net/ginpachi-sensei/41..46&49..52|2&30
-</pre>
+If you're on Windows, **you *might* need win32console. Please note, I haven't tested on Windows.**
 
 You may also benefit from making a config file, see .xget.conf for a simple<br/>
 example config. You can alternativly pass them in arguments, see --help.
 By default, config files are read from "~/.xget.conf"
 
+```
+gem install xget slop win32console
+```
+## Usage
+```
+xget #news@irc.rizon.net/ginpachi-sensei/1
+xget #news@irc.rizon.net/ginpachi-sensei/41..46
+xget #news@irc.rizon.net/ginpachi-sensei/41..46|2
+xget #news@irc.rizon.net/ginpachi-sensei/41..46&49..52|2&30
+```
+
 ## License
 
-<pre>
+```
 Copyright (c) 2013, Rusty Shackleford
 All rights reserved.
 
@@ -60,4 +60,4 @@ LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
 ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-</pre>
+```
