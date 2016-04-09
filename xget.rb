@@ -433,7 +433,7 @@ config["allow-queueing"] = opts["allow-queueing"] if opts["allow-queueing"]
 config["sleep-interval"] = opts["sleep-interval"] unless opts["sleep-interval"].nil?
 
 # Take remaining arguments and all lines from --files arg and put into array
-to_check = ($*)
+to_check = opts.arguments
 if opts['files'] != nil and not opts['files'].empty?
   opts['files'].each do |x|
     File.open(x, "r").each_line { |y| to_check << y.chomp } if File.exists? x
