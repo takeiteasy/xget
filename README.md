@@ -1,12 +1,10 @@
 # xget
 
-xget is a simple IRC client/bot that downloads files from XDCC servers,<br/>
-xget also supports DCC RESUME, so if the connection is cut off, you can continue easily.</br>
-Pass the XDCC server, channel, bot and pack as a sort of link and xget does the rest.<br/>
-Links can be passed either through the arguments, or in a file, which is read line by line.<br/>
-Also, if you have mutiple packages from the same bot in a row, use a range, like x..y or<br/>
-x..y|interval if you would like to specify a step interval for the range.<br/>
-You can add multiple ranges, with steps: x..y|interval&x..y&x&x..y|interval
+xget is a simple IRC client/bot that downloads files from XDCC servers, xget also supports DCC RESUME, so if the connection is cut off, you can continue easily.
+
+Pass the XDCC server, channel, bot and pack as a sort of link and xget does the rest.
+
+Links can be passed either through the arguments, or in a file, which is read line by line. Also, if you have mutiple packages from the same bot in a row, use a range, like x..y or x..y|interval if you would like to specify a step interval for the range. You can add multiple ranges, with steps: x..y|interval&x..y&x&x..y|interval
 
 ## Screenshot
 
@@ -14,17 +12,16 @@ You can add multiple ranges, with steps: x..y|interval&x..y&x&x..y|interval
 
 ## Install
 
-Firstly, xget requires the latest version of Ruby, 2.0.0p0, and also [Slop](https://github.com/leejarvis/slop) for<br/>
-the argument parsing.<br/>
-If you're on Windows, **you *might* need win32console. Please note, I haven't tested on Windows.**
+Firstly, xget requires the latest version of Ruby, 2.0.0p0, and also [Slop](https://github.com/leejarvis/slop) for the argument parsing.
 
-You may also benefit from making a config file, see .xget.conf for a simple<br/>
-example config. You can alternativly pass them in arguments, see --help.
-By default, config files are read from "~/.xget.conf"
+If you're on Windows, use [ansicon](https://github.com/adoxa/ansicon) for coloured terminal escapes.
+
+You may also benefit from making a config file, see .xget.conf for a simple example config. You can alternativly pass them in arguments, see --help. By default, config files are read from "~/.xget.conf"
 
 ```
-gem install xget slop win32console
+gem install xget slop
 ```
+
 ## Usage
 ```
 xget #news@irc.rizon.net/ginpachi-sensei/1
