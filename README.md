@@ -4,7 +4,7 @@ xget is a simple IRC client/bot that downloads files from XDCC servers, xget als
 
 Pass the XDCC server, channel, bot and pack as a sort of link and xget does the rest.
 
-Links can be passed either through the arguments, or in a file, which is read line by line. Also, if you have mutiple packages from the same bot in a row, use a range, like x..y or x..y|interval if you would like to specify a step interval for the range. You can add multiple ranges, with steps: x..y|interval&x..y&x&x..y|interval
+Links can be passed either through the arguments, or in a file, which is read line by line. Also, if you have mutiple packages from the same bot in a row, use a range, like `x..y` or `x..y|interval` if you would like to specify a step interval for the range. You can add multiple ranges, with steps: `x..y|interval&x..y&x&x..y|interval`. For more info, run with `--help`
 
 ## Screenshot
 
