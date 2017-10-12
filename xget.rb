@@ -6,10 +6,9 @@
 # All rights reserved.
 
 begin
-  require 'Win32/Console/ANSI' if RbConfig::CONFIG['host_os'] =~ /mswin|mingw|cygwin/
   %w(socket thread slop timeout).each { |r| require r }
 rescue LoadError
-  abort "#{$0} requires slop and, if you're on Windows, win32console\nPlease run 'gem install slop win32console'"
+  abort "#{$0} Requires slop - Please run 'gem install slop'"
 end
 
 # Why isn't this enabled by default?
@@ -135,6 +134,7 @@ class Stream
 
   def disconnect
     @io.puts 'QUIT'
+	rescue Errno::EPIPE
   end
 
   def << data
@@ -182,6 +182,7 @@ class Bot
   def tick
     stream.read
     stream.write
+		sleep 0.001
   end
 end
 
@@ -471,7 +472,7 @@ to_check.each do |x|
       end
     end
   else
-    puts_abort "#{x} is not a valid XDCC address\n XDCC Address format: #chan@irc.serv.com/bot/pack(s)"
+		puts_abort "#{x} is not a valid XDCC address\n XDCC Address format: #chan@irc.serv.com/bot/pack(s) or ^\/msg irc.serv.com bot xdcc send #id$"
   end
 end
 
