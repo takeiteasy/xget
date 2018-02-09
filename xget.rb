@@ -449,7 +449,7 @@ end
 # Parse to_check array for valid XDCC links, irc.serv.org/#chan/bot/pack
 tmp_requests = []
 to_check.each do |x|
-  if x =~ /^(#\S+)@(irc.\w+.\w+{2,3})\/(\S+)\/([\.&\|\d]+)$/
+  if x =~ /^(#\S+)@(irc.\S+.\w+{2,3})\/(\S+)\/([\.&\|\d]+)$/
     chan  = $1
     serv  = $2
     bot   = $3
