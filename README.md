@@ -1,6 +1,7 @@
 # Modification by Me
 1. Fix download speed and time estimation
 2. Add fancy progress bar and text coloring
+3. Longer waiting time, sometimes bot got busy
 
 ## Screenshot
 ![screenshot](https://github.com/chocolateshirt/xget/blob/master/xget.png)
