@@ -686,7 +686,7 @@ requests.each do |k, v|
         if config["allow-queueing"] and xdcc_queued
           next
         end
-        if (Time.now - req_send_time).floor > 10
+        if (Time.now - req_send_time).floor > 25
           puts_error "#{req.bot} took too long to respond, are you sure it's a bot?"
           stream.disconnect
           bot.stop
@@ -695,7 +695,7 @@ requests.each do |k, v|
 
       # Wait 3 seconds for a DCC ACCEPT response, if there isn't one, don't resume
       if xdcc_sent and xdcc_accepted and not xdcc_accept_time.nil?
-        if (Time.now - xdcc_accept_time).floor > 10
+        if (Time.now - xdcc_accept_time).floor > 25
           puts "FAILED! Bot client doesn't support resume!"
           puts "Connecting to: #{req.bot} @ #{xdcc_ret.ip}:#{xdcc_ret.port}"
           dcc_download xdcc_ret.ip, xdcc_ret.port, xdcc_ret.fname, xdcc_ret.fsize
