@@ -2,6 +2,7 @@
 1. Fix download speed and time estimation
 2. Add fancy progress bar and text coloring
 
+## Screenshot
 ![screenshot](https://github.com/chocolateshirt/xget/blob/master/xget.png)
 
 ## Requirement
