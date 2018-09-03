@@ -1,3 +1,10 @@
+# Modification by Me
+1. Fix download speed and time estimation
+2. Add fancy progress bar and coloring
+
+
+
+
 # xget
 
 xget is a simple IRC client/bot that downloads files from XDCC servers, xget also supports DCC RESUME, so if the connection is cut off, you can continue easily.
