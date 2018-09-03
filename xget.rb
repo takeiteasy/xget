@@ -277,6 +277,8 @@ def dcc_download ip, port, fname, fsize, read = 0
   end
   puts_abort "Failed to connect to \"#{ip}:#{port}\": #{e}" if sock.nil?
 
+  require 'filesize'
+	
   fsize_clean = bytes_to_closest fsize
   avgs, last_check, start_time = [], Time.now - 2, Time.now
   fh = File.open fname, (read == 0 ? "w" : "a") # Write or append
