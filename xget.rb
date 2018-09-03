@@ -681,7 +681,7 @@ requests.each do |k, v|
         xdcc_sent     = true
       end
 
-      # Wait 3 seconds for DCC SEND response, if there isn't one, abort
+      # Wait 25 seconds for DCC SEND response, if there isn't one, abort
       if xdcc_sent and not req_send_time.nil? and not xdcc_accepted
         if config["allow-queueing"] and xdcc_queued
           next
@@ -693,7 +693,7 @@ requests.each do |k, v|
         end
       end
 
-      # Wait 3 seconds for a DCC ACCEPT response, if there isn't one, don't resume
+      # Wait 25 seconds for a DCC ACCEPT response, if there isn't one, don't resume
       if xdcc_sent and xdcc_accepted and not xdcc_accept_time.nil?
         if (Time.now - xdcc_accept_time).floor > 25
           puts "FAILED! Bot client doesn't support resume!"
