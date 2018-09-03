@@ -1,9 +1,17 @@
 # Modification by Me
 1. Fix download speed and time estimation
-2. Add fancy progress bar and coloring
+2. Add fancy progress bar and text coloring
 
+![screenshot](https://github.com/chocolateshirt/xget/blob/master/xget.png)
 
+## Requirement
+You need to install ruby `filesize` gem using this command:
 
+```
+gem install filesize
+```
+
+==============================================================================================================================================================
 
 # xget
 
