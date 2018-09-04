@@ -4,7 +4,7 @@
 3. Longer waiting time, sometimes bot got busy, to avoid timed out
 
 ## Screenshot
-![screenshot](https://github.com/chocolateshirt/xget/blob/master/xget.jpg)
+![screenshot](https://raw.githubusercontent.com/chocolateshirt/xget/master/xget.jpg)
 
 
 
