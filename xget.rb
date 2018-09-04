@@ -291,7 +291,7 @@ def dcc_download ip, port, fname, fsize, read = 0
     (20 - bars).times { print " " }
     avg = avgs.average * 1024.0
     kecepatan = (read - baca)
-    time_rem = time_distance ((fsize - read) / cepat) * 1.5
+    time_rem = time_distance ((fsize - read) / kecepatan) * 1.5
     print "\e[0m ] \e[1;35m#{pc.round(2)}%\e[0m - #{bytes_to_closest read}/#{fsize_clean} \e[37m@\e[0m \e[1;33m#{bytes_to_closest kecepatan}/s\e[0m in \e[37m#{time_rem}\e[0m"
 
     baca = read
