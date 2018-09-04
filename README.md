@@ -1,10 +1,10 @@
 # Modification by Me
 1. Fix download speed and time estimation
 2. Add fancy progress bar and text coloring
-3. Longer waiting time, sometimes bot got busy
+3. Longer waiting time, sometimes bot got busy, to avoid timed out
 
 ## Screenshot
-![screenshot](https://github.com/chocolateshirt/xget/blob/master/xget.png)
+![screenshot](https://github.com/chocolateshirt/xget/blob/master/xget.jpg)
 
 ## Requirement
 You need to install ruby `filesize` gem using this command:
