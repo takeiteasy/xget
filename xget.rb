@@ -277,8 +277,6 @@ def dcc_download ip, port, fname, fsize, read = 0
   end
   puts_abort "Failed to connect to \"#{ip}:#{port}\": #{e}" if sock.nil?
 
-  require 'filesize'
-	
   fsize_clean = bytes_to_closest fsize
   avgs, last_check, start_time = [], Time.now - 2, Time.now
   fh = File.open fname, (read == 0 ? "w" : "a") # Write or append
@@ -292,10 +290,9 @@ def dcc_download ip, port, fname, fsize, read = 0
     bars.times { print "#" }
     (20 - bars).times { print " " }
     avg = avgs.average * 1024.0
-    cepat = (read - baca)
-    kecepatan = Filesize.from("#{cepat} b").pretty
-    time_rem = time_distance ((fsize - read) / cepat) * 8.0
-    print "\e[0m ] \e[1;35m#{pc.round(2)}%\e[0m - #{bytes_to_closest read}/#{fsize_clean} \e[37m@\e[0m \e[1;33m#{kecepatan}/s\e[0m \e[37min\e[0m #{time_rem}"
+    kecepatan = (read - baca)
+    time_rem = time_distance ((fsize - read) / cepat) * 1.5
+    print "\e[0m ] \e[1;35m#{pc.round(2)}%\e[0m - #{bytes_to_closest read}/#{fsize_clean} \e[37m@\e[0m \e[1;33m#{bytes_to_closest kecepatan}/s\e[0m in \e[37m#{time_rem}\e[0m"
 
     baca = read
     last_check = Time.now
@@ -508,7 +505,7 @@ end
 
 # Sort requests by pack
 requests.each do |k,v|
-  puts "#{k} \e[1;37m->\e[0m"
+  puts "\e[1;33m#{k}\e[0m \e[1;37m->\e[0m"
   v.sort_by { |x| [x.chan, x.bot, x.pack] }.each { |x| puts "  #{x}" }
 end
 puts
