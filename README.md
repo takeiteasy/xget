@@ -6,12 +6,7 @@
 ## Screenshot
 ![screenshot](https://github.com/chocolateshirt/xget/blob/master/xget.jpg)
 
-## Requirement
-You need to install ruby `filesize` gem using this command:
 
-```
-gem install filesize
-```
 
 ==============================================================================================================================================================
 
