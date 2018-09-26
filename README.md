@@ -1,15 +1,3 @@
-# Modification by Me
-1. Fix download speed and time estimation
-2. Add fancy progress bar and text coloring
-3. Longer waiting time, sometimes bot got busy, to avoid timed out
-
-## Screenshot
-![screenshot](https://raw.githubusercontent.com/chocolateshirt/xget/master/xget-ss.jpg)
-
-
-
-==============================================================================================================================================================
-
 # xget
 
 xget is a simple IRC client/bot that downloads files from XDCC servers, xget also supports DCC RESUME, so if the connection is cut off, you can continue easily.
@@ -20,7 +8,7 @@ Links can be passed either through the arguments, or in a file, which is read li
 
 ## Screenshot
 
-![screenshot](https://github.com/takeiteasy/xget/raw/master/screen.png)
+![screenshot](https://raw.githubusercontent.com/chocolateshirt/xget/master/xget-ss.jpg)
 
 ## Install
 
