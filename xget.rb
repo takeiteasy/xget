@@ -280,18 +280,21 @@ def dcc_download ip, port, fname, fsize, read = 0
   fsize_clean = bytes_to_closest fsize
   avgs, last_check, start_time = [], Time.now - 2, Time.now
   fh = File.open fname, (read == 0 ? "w" : "a") # Write or append
-
+  baca = read
+	
   # Form the status bar
   print_bar = ->() {
-    print "\r\e[0K> [ \e[1;37m"
+    print "\r\e[0K>> [ \e[1;35m"
     pc   = read.to_f / fsize.to_f * 100.0
-    bars = (pc / 10).to_i
+    bars = (pc / 5).to_i
     bars.times { print "#" }
-    (10 - bars).times { print " " }
+    (20 - bars).times { print " " }
     avg = avgs.average * 1024.0
-    time_rem = time_distance ((fsize - read) / avg) * 8.0
-    print "\e[0m ] #{pc.round(2)}% #{bytes_to_closest read}/#{fsize_clean} \e[1;37m@\e[0m #{bytes_to_closest avg}/s \e[1;37min\e[0m #{time_rem}"
+    kecepatan = (read - baca)
+    time_rem = time_distance ((fsize - read) / kecepatan) * 1.5
+    print "\e[0m ] \e[1;35m#{pc.round(2)}%\e[0m - #{bytes_to_closest read}/#{fsize_clean} \e[37m@\e[0m \e[1;33m#{bytes_to_closest kecepatan}/s\e[0m in \e[37m#{time_rem}\e[0m"
 
+    baca = read
     last_check = Time.now
     avgs.clear
   }
@@ -317,7 +320,7 @@ def dcc_download ip, port, fname, fsize, read = 0
   sock.close
   fh.close
 
-  puts "\n! \e[1;32mSUCCESS\e[0m: downloaded #{File.basename fname} #{elapsed_time}"
+  puts "\n! \e[1;32mSUCCESS\e[0m downloaded \e[1;36m#{File.basename fname}\e[0m #{elapsed_time}"
 rescue EOFError, SocketError => e
   puts "\n! ERROR: #{File.basename fname} failed to download! #{e}"
 end
@@ -502,7 +505,7 @@ end
 
 # Sort requests by pack
 requests.each do |k,v|
-  puts "#{k} \e[1;37m->\e[0m"
+  puts "\e[1;33m#{k}\e[0m \e[1;37m->\e[0m"
   v.sort_by { |x| [x.chan, x.bot, x.pack] }.each { |x| puts "  #{x}" }
 end
 puts
@@ -579,7 +582,7 @@ requests.each do |k, v|
 
           tmp_fname = fname
           fname     = $1 if tmp_fname =~ /^"(.*)"$/
-          puts "Preparing to download: \e[36m#{fname}\e[0m"
+          puts "Preparing to download: \e[1;36m#{fname}\e[0m"
           fname     = (config["out-dir"].dup << fname)
           xdcc_ret  = XDCC_SEND.new fname, fsize.to_i, [ip.to_i].pack('N').unpack('C4') * '.', port.to_i
 
@@ -606,7 +609,7 @@ requests.each do |k, v|
           # It's a new download, start from beginning
           Thread.new do
             pid = fork do
-              puts "Connecting to: #{req.bot} @ #{xdcc_ret.ip}:#{xdcc_ret.port}"
+              puts "Connecting to: \e[1;34m#{req.bot}\e[0m @ #{xdcc_ret.ip}:#{xdcc_ret.port}"
               dcc_download xdcc_ret.ip, xdcc_ret.port, xdcc_ret.fname, xdcc_ret.fsize
             end
 
@@ -677,21 +680,21 @@ requests.each do |k, v|
         xdcc_sent     = true
       end
 
-      # Wait 3 seconds for DCC SEND response, if there isn't one, abort
+      # Wait 25 seconds for DCC SEND response, if there isn't one, abort
       if xdcc_sent and not req_send_time.nil? and not xdcc_accepted
         if config["allow-queueing"] and xdcc_queued
           next
         end
-        if (Time.now - req_send_time).floor > 10
+        if (Time.now - req_send_time).floor > 25
           puts_error "#{req.bot} took too long to respond, are you sure it's a bot?"
           stream.disconnect
           bot.stop
         end
       end
 
-      # Wait 3 seconds for a DCC ACCEPT response, if there isn't one, don't resume
+      # Wait 25 seconds for a DCC ACCEPT response, if there isn't one, don't resume
       if xdcc_sent and xdcc_accepted and not xdcc_accept_time.nil?
-        if (Time.now - xdcc_accept_time).floor > 10
+        if (Time.now - xdcc_accept_time).floor > 25
           puts "FAILED! Bot client doesn't support resume!"
           puts "Connecting to: #{req.bot} @ #{xdcc_ret.ip}:#{xdcc_ret.port}"
           dcc_download xdcc_ret.ip, xdcc_ret.port, xdcc_ret.fname, xdcc_ret.fsize
