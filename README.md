@@ -14,8 +14,6 @@ Links can be passed either through the arguments, or in a file, which is read li
 
 Firstly, xget requires the latest version of Ruby, 2.0.0p0, and also [Slop](https://github.com/leejarvis/slop) for the argument parsing.
 
-If you're on Windows, use [ansicon](https://github.com/adoxa/ansicon) for coloured terminal escapes.
-
 You may also benefit from making a config file, see .xget.conf for a simple example config. You can alternativly pass them in arguments, see --help. By default, config files are read from "~/.xget.conf"
 
 ```
@@ -33,7 +31,7 @@ xget #news@irc.rizon.net/ginpachi-sensei/41..46&49..52|2&30
 ## License
 
 ```
-Copyright (c) 2013, Rusty Shackleford
+Copyright (c) 2013, George Watson
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
