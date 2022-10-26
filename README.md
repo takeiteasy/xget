@@ -2,23 +2,13 @@
 
 xget is a simple IRC client/bot that downloads files from XDCC servers, xget also supports DCC RESUME, so if the connection is cut off, you can continue easily.
 
-Pass the XDCC server, channel, bot and pack as a sort of link and xget does the rest.
+Pass the XDCC server, channel, bot and pack as a sort of link and xget does the rest. See `.xget.conf` for an example config file.
 
 Links can be passed either through the arguments, or in a file, which is read line by line. Also, if you have mutiple packages from the same bot in a row, use a range, like `x..y` or `x..y|interval` if you would like to specify a step interval for the range. You can add multiple ranges, with steps: `x..y|interval&x..y&x&x..y|interval`. For more info, run with `--help`
 
 ## Screenshot
 
 ![screenshot](https://raw.githubusercontent.com/chocolateshirt/xget/master/xget-ss.jpg)
-
-## Install
-
-Firstly, xget requires the latest version of Ruby, 2.0.0p0, and also [Slop](https://github.com/leejarvis/slop) for the argument parsing.
-
-You may also benefit from making a config file, see .xget.conf for a simple example config. You can alternativly pass them in arguments, see --help. By default, config files are read from "~/.xget.conf"
-
-```
-gem install xget slop
-```
 
 ## Usage
 ```
