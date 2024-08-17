@@ -358,8 +358,8 @@ OptionParser.new do |o|
         puts " \txget.rb --files test1.txt:test2.txt:test3.txt"
         puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/1"
         puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/41..46"
-        puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/41..46|2"
-        puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/41..46&49..52|2&30"
+        puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/41..46-2"
+        puts " \txget.rb #news@irc.rizon.net/ginpachi-sensei/41..46&49..52-2&30"
         exit
     end
     o.on '-v', '--version', 'Print version' do
@@ -494,13 +494,13 @@ end
 # Parse to_check array for valid XDCC links, irc.serv.org/#chan/bot/pack
 tmp_requests = []
 to_check.each do |x|
-    if x =~ /^(#\S+)@(irc.\S+.\w+{2,3})\/(\S+)\/([\.&\|\d]+)$/
+    if x =~ /^(#\S+)@(irc.\S+.\w+{2,3})\/(\S+)\/([\.&\-\d]+)$/
         chan  = $1
         serv  = $2
         bot   = $3
         info  = config["servers"].has_key?(serv) ? serv : "*"
         $4.split('&').each do |y|
-            if y =~ /^(\d+)(\.\.\d+(\|\d+)?)?$/
+            if y =~ /^(\d+)(\.\.\d+(\-\d+)?)?$/
                 pack = $1.to_i
                 if $2.nil?
                     tmp_requests.push XDCC_REQ.new serv, chan, bot, pack, info
