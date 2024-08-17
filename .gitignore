@@ -1,5 +1,5 @@
 .*.*.swp
 *.swp
 .DS_Store
-xget*.gem*
+*.gem
 bin/
