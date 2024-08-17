@@ -1,22 +1,38 @@
 # xget
 
-xget is a simple IRC client/bot that downloads files from XDCC servers, xget also supports DCC RESUME, so if the connection is cut off, you can continue easily.
+_xget_ is a simple IRC bot that can easily automate downloading files over XDCC.
 
-Pass the XDCC server, channel, bot and pack as a sort of link and xget does the rest. See `.xget.conf` for an example config file.
-
-Links can be passed either through the arguments, or in a file, which is read line by line. Also, if you have mutiple packages from the same bot in a row, use a range, like `x..y` or `x..y|interval` if you would like to specify a step interval for the range. You can add multiple ranges, with steps: `x..y|interval&x..y&x&x..y|interval`. For more info, run with `--help`
-
-## Screenshot
+You can download can either download the `xget.rb` file from here and chmod it, or download the gem `gem install xget`.
 
 ![screenshot](https://raw.githubusercontent.com/chocolateshirt/xget/master/xget-ss.jpg)
 
 ## Usage
+
+To get started, here is a basic example:
+
+```
+xget #news@irc.rizon.net/ginpachi-sensei/1
+```
+
+If you are familiar with IRC and XDCC bots this shouldn't be too hard to work out. If you're not, you might want to familiarise yourself with some basic concepts first. This command will instruct xget to connect to the `news` channel on the `irc.rizon.net` server and request XDCC package `1` from the bot `ginpanchi-sensei`.
+
+```
+xget #[channel]@[server]/[bot]/[packages]
+```
+
+To download multiple different packages at the same time, you can add a range, for example ```x..y```. This will queue downloads for all packages from x to y. You can also add a step to the range, ```x..y-n```. This will download all packages from x to y taking n steps through the range. For example, `10..20-2` would queue ```10, 12, 14, 16, 18 & 20```.
+
+Multiple ranges or packages can be chained together with ```&```.
+
 ```
 xget #news@irc.rizon.net/ginpachi-sensei/1
 xget #news@irc.rizon.net/ginpachi-sensei/41..46
-xget #news@irc.rizon.net/ginpachi-sensei/41..46|2
-xget #news@irc.rizon.net/ginpachi-sensei/41..46&49..52|2&30
+xget #news@irc.rizon.net/ginpachi-sensei/41..46-2
+xget #news@irc.rizon.net/ginpachi-sensei/41..46&49..52-2&30
 ```
+xget also supports `DCC RESUME`. So if the connection is cut off, you can continue the download where it left off.
+
+See `.xget.conf` for an example configuration file. Different aliases and accounts can be setup per-server. xget will look for a .xget.conf file in the directory it's located or in your home directory.
 
 ## License
 
